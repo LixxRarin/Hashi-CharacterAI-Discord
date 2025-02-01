@@ -6,123 +6,182 @@ import datetime
 import yaml
 import logging
 
-logging.basicConfig(level=logging.DEBUG, filename="app.log", format='[%(filename)s] %(levelname)s : %(message)s', encoding="utf-8")
+# Configure logging: log both to file and console.
+logging.basicConfig(
+    level=logging.DEBUG,
+    filename="app.log",
+    format='[%(filename)s] %(levelname)s : %(message)s',
+    encoding="utf-8"
+)
 console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.DEBUG)  # Define o nível do console
+console_handler.setLevel(logging.DEBUG)  # Set console log level
 console_handler.setFormatter(logging.Formatter('[%(filename)s] %(levelname)s : %(message)s'))
+#logging.getLogger().addHandler(console_handler)
 
-with open("config.yml", "r", encoding="utf-8") as file:
-    data = yaml.safe_load(file)
+# Load configuration from the YAML file.
+try:
+    with open("config.yml", "r", encoding="utf-8") as file:
+        data = yaml.safe_load(file)
+    logging.info("Configuration file 'config.yml' loaded successfully.")
+except Exception as e:
+    logging.error("Failed to load configuration file 'config.yml': %s", e)
+    data = {}  # Fallback to empty dict (or you can choose to exit here)
 
+# --------------------
+# Asynchronous Timeout Function
+# --------------------
 async def timeout_async(func, timeout, on_timeout):
+    """
+    Awaits the execution of 'func' with a specified timeout.
+    If a timeout occurs, the 'on_timeout' function is called.
+    """
     try:
-        # Aguarda a execução da função com o tempo limite especificado
         await asyncio.wait_for(func(), timeout=timeout)
     except asyncio.TimeoutError:
-        # Chama a função alternativa em caso de timeout
-        await on_timeout()
+        logging.warning("Operation timed out after %s seconds. Executing on_timeout handler.", timeout)
+        try:
+            await on_timeout()
+        except Exception as e:
+            logging.error("Error in on_timeout handler: %s", e)
 
-#Remove emojis de uma string
+# --------------------
+# Emoji Removal Function
+# --------------------
 def remove_emoji(text):
+    """
+    Removes emoji characters from the given text.
+    """
     emoji_pattern = re.compile(
-        "[\U0001F600-\U0001F64F" # emoticons
-        "\U0001F300-\U0001F5FF"  # símbolos e pictogramas diversos
-        "\U0001F680-\U0001F6FF"  # transporte e símbolos de mapa
-        "\U0001F700-\U0001F77F"  # símbolos alquímicos
-        "\U0001F780-\U0001F7FF"  # geometria e símbolos vários
-        "\U0001F800-\U0001F8FF"  # símbolos de setas
-        "\U0001F900-\U0001F9FF"  # emojis diversos
-        "\U0001FA00-\U0001FA6F"  # símbolos e pictogramas diversos
-        "\U0001FA70-\U0001FAFF"  # símbolos diversos
-        "\U00002702-\U000027B0"  # símbolos adicionais
-        "\U000024C2-\U0001F251"  # caracteres de cartas e quadrados
+        "[\U0001F600-\U0001F64F"  # emoticons
+        "\U0001F300-\U0001F5FF"   # symbols & pictographs
+        "\U0001F680-\U0001F6FF"   # transport & map symbols
+        "\U0001F700-\U0001F77F"   # alchemical symbols
+        "\U0001F780-\U0001F7FF"   # geometric shapes extended
+        "\U0001F800-\U0001F8FF"   # supplemental arrows-C
+        "\U0001F900-\U0001F9FF"   # supplemental symbols and pictographs
+        "\U0001FA00-\U0001FA6F"   # chess symbols, etc.
+        "\U0001FA70-\U0001FAFF"   # symbols and pictographs extended-A
+        "\U00002702-\U000027B0"   # dingbats
+        "\U000024C2-\U0001F251"   # enclosed characters
         "]+", flags=re.UNICODE)
-    
-    # Remove todos os emojis da frase
-    return re.sub(emoji_pattern, "", text).strip()
+    # Remove all emojis from the text
+    cleaned_text = re.sub(emoji_pattern, "", text).strip()
+    return cleaned_text
 
-#Testa a conecxão com a internet.
+# --------------------
+# Internet Connection Test
+# --------------------
 def test_internet():
+    """
+    Tests internet connectivity by attempting to connect to www.google.com.
+    Returns True if successful, otherwise False.
+    """
     try:
         socket.create_connection(("www.google.com", 80), timeout=5)
+        logging.info("Internet connection test succeeded.")
         return True
-    except OSError:
+    except OSError as e:
+        logging.error("Internet connection test failed: %s", e)
         return False
 
-#Captura mensagens do canal especificado.
+# --------------------
+# Capture Message Function
+# --------------------
 def capture_message(cache_file, message_info, reply_message=None):
+    """
+    Captures a message from a specified channel and saves it in the cache file.
+    It applies formatting based on the configuration and supports both normal and reply messages.
+    """
+    # Read existing cache data
     dados = read_json(cache_file)
+    if dados is None:
+        dados = []
+    
+    # Retrieve format templates from configuration
+    template_syntax = data.get("MessageFormatting", {}).get("user_format_syntax", "{message}")
+    reply_template_syntax = data.get("MessageFormatting", {}).get("user_reply_format_syntax", "{message}")
 
-    template_syntax = data["MessageFormatting"]["user_format_syntax"]
-    reply_template_syntax = data["MessageFormatting"]["user_reply_format_syntax"]
-
+    # Prepare data for formatting
     syntax = {
-        "time" : datetime.datetime.now().strftime("%H:%M"),
-        "username" : message_info["username"],
-        "name" : message_info["name"],
-        "message" : message_info["message"],
+        "time": datetime.datetime.now().strftime("%H:%M"),
+        "username": message_info.get("username", ""),
+        "name": message_info.get("name", ""),
+        "message": message_info.get("message", ""),
     }
 
-    for pattern in data["MessageFormatting"]["remove_user_text_from"]:
-        message_info["message"] = re.sub(pattern, '', message_info["message"], flags=re.MULTILINE).strip()
+    # Remove unwanted text patterns from the message using regex patterns from config.
+    for pattern in data.get("MessageFormatting", {}).get("remove_user_text_from", []):
+        syntax["message"] = re.sub(pattern, '', syntax["message"], flags=re.MULTILINE).strip()
 
+    # Process reply message if provided.
     if reply_message:
-        syntax.update(
-            {"reply_username" : reply_message["username"],
-            "reply_name" : reply_message["name"],
-            "reply_message" : reply_message["message"]}
-        )
+        syntax.update({
+            "reply_username": reply_message.get("username", ""),
+            "reply_name": reply_message.get("name", ""),
+            "reply_message": reply_message.get("message", ""),
+        })
+        # Clean reply message text using same patterns.
+        for pattern in data.get("MessageFormatting", {}).get("remove_user_text_from", []):
+            syntax["reply_message"] = re.sub(pattern, '', syntax["reply_message"], flags=re.MULTILINE).strip()
 
-        for pattern in data["MessageFormatting"]["remove_user_text_from"]:
-            reply_message["message"] = re.sub(pattern, '', message_info["message"], flags=re.MULTILINE).strip()
-
+    # Attempt to format and store the message.
     try:
-
-        if reply_message == None:
-
+        if reply_message is None:
             msg = template_syntax.format(**syntax)
-            dados.append({"Message" : msg})
-
+            dados.append({"Message": msg})
+            logging.info("Captured new message: %s", msg)
         else:
-
-            message_info = template_syntax.format(**syntax)
-            reply_message = reply_template_syntax.format(**syntax) 
-            dados.append({"Reply" : reply_message})
-
-        write_json(cache_file, dados)
-
-    except Exception as e:
-        print(f"[!] Erro ao salvar mensagem no cache: {e}")
-
-#Formata a mensagem antes de enviar para a IA.
-def format_to_send(cache_file):
-    format = []
-
-    for i in cache_file:
+            # Format as a reply
+            formatted_message = template_syntax.format(**syntax)
+            formatted_reply = reply_template_syntax.format(**syntax)
+            dados.append({"Reply": formatted_reply})
+            logging.info("Captured reply message: %s", formatted_reply)
         
-        if isinstance(i, dict) and 'Message' in i:
+        write_json(cache_file, dados)
+    except Exception as e:
+        logging.error("Error while saving message to cache: %s", e)
 
-            format.append(i["Message"])
+# --------------------
+# Format Message for Sending
+# --------------------
+def format_to_send(cache_data):
+    """
+    Aggregates cached messages into a single string separated by newline characters.
+    """
+    formatted_messages = []
+    for entry in cache_data:
+        if isinstance(entry, dict):
+            if "Message" in entry:
+                formatted_messages.append(entry["Message"])
+            elif "Reply" in entry:
+                formatted_messages.append(entry["Reply"])
+    combined_message = "\n".join(formatted_messages)
+    logging.debug("Formatted message to send: %s", combined_message)
+    return combined_message
 
-        if isinstance(i, dict) and 'Reply' in i:
-
-            format.append(i["Reply"])
-
-    return "\n".join(format)
-
-#ler arquivos Json.
+# --------------------
+# JSON File Operations
+# --------------------
 def read_json(file_path):
+    """
+    Reads and returns the content of a JSON file.
+    If an error occurs, logs the error and returns an empty list.
+    """
     try:
         with open(file_path, 'r', encoding="utf-8") as file:
             return json.load(file)
     except Exception as e:
-        logging.error(f"Error decoding json file {file_path}: {e}")
-        return []
-    
-# Função de escrita do JSON
+        logging.error("Error decoding JSON file '%s': %s", file_path, e)
+        return []  # Return an empty list on failure
+
 def write_json(file_path, data):
+    """
+    Writes the provided data to a JSON file.
+    Logs any errors that occur during the write operation.
+    """
     try:
         with open(file_path, 'w', encoding="utf-8") as file:
             json.dump(data, file, ensure_ascii=False, indent=4)
+        logging.info("JSON file '%s' written successfully.", file_path)
     except Exception as e:
-        logging.error(f"Error saving json file '{file_path}': {e}")
+        logging.error("Error saving JSON file '%s': %s", file_path, e)
