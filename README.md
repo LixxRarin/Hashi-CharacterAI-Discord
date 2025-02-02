@@ -9,7 +9,7 @@ It is worth noting that this project does not yet have a definitive name TwT...
 
 **Demo Server**: [Join Discord](https://discord.gg/pPSk2g8YX2) | **Report Issues**: [GitHub Issues](https://github.com/LixxRarin/CharacterAI-Discord-Bridge/issues)
 
-<a href="https://ibb.co/kRLnXxq"><img src="https://i.ibb.co/XhnBtbF/Captura-de-tela-2025-02-02-141343.png" alt="..." border="0"></a>
+<a href="https://ibb.co/kRLnXxq"><img src="https://i.ibb.co/XhnBtbF/Captura-de-tela-2025-02-02-141343.png" alt="Captura-de-tela-2025-02-02-141343" border="0"></a>
 
 ## 📌 Contents
 - [Features](#-features) 
