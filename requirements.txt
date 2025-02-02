@@ -1,0 +1,6 @@
+discord.py
+aiohttp
+PyCharacterAI
+ruamel.yaml
+pyyaml
+colorama
