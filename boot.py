@@ -52,7 +52,7 @@ CAI:
   # This is the token for authenticating your bot with Character.AI.
   # Like the Discord token, keep this token private and do not share it.
 
-  character_id: "4i-QSqqhKeqlZCCkJLzst0DcjqiB0sfUz6Jn_SifOjQ"  # The ID of the Character.AI character.
+  character_id: "7OQWCw72T2hHr8JwNIjXd8KpTy663wI_piz4XCHbeZ4"  # The ID of the Character.AI character.
   # This is the unique identifier for the character you want the bot to use.
   # The default ID is from Neuro-Sama
 
@@ -106,7 +106,7 @@ MessageFormatting:
   # Setting to false keeps emojis in the conversation.
   # This option is not yet available!!!
 
-  user_reply_format_syntax: "[{time} ~ (Reply: @{reply_username} - {reply_name}:] [{reply_message}) @{username} - {name}:] {message}"
+  user_reply_format_syntax: "[(Reply: @{reply_name}:) {reply_message}]\n[[time} ~ @{username} - {name}:] {message}"
   user_format_syntax: "[{time} ~ @{username} - {name}:] {message}"
 """
 
@@ -225,11 +225,11 @@ def startup_screen():
     os.system("cls" if os.name == "nt" else "clear")  # Clear the console (Windows & Linux/macOS)
     
     banner = f"""
-{Fore.CYAN}{Style.BRIGHT}Project: {Fore.WHITE}CharacterAI Discord Bridge
+{Fore.CYAN}{Style.BRIGHT}Project: {Fore.WHITE}Bridge - CharacterAI personas in Discord.
+{Fore.YELLOW}Description: {Fore.WHITE}An AI-powered Discord bot using Character.AI! :3 
 {Fore.YELLOW}Creator: {Fore.WHITE}LixxRarin
 {Fore.YELLOW}GitHub: {Fore.WHITE}https://github.com/LixxRarin/CharacterAI-Discord-Bridge
 {Fore.YELLOW}Version: {Fore.WHITE}1.0.0 (first release)
-{Fore.YELLOW}Description: {Fore.WHITE}An AI-powered Discord bot using Character.AI! :3
 {Style.RESET_ALL}
 """
 
