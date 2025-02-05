@@ -139,6 +139,7 @@ pip install -r requirements.txt --upgrade
 > Don't worry about the 'config.yml' configuration file, it is updated automatically without losing your data.
 
 ## 🙏 BLESS
+- **[KarstSkarn](https://github.com/KarstSkarn)** for inspiration from [ChAIScrapper](https://github.com/KarstSkarn/ChAIScrapper)
 - **[PyCharacterAI](https://github.com/pycharacterai)** team for unofficial API wrapper
 - **[Character.AI](https://character.ai/)**
 
