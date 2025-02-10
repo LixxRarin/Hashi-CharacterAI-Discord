@@ -49,24 +49,31 @@ async def timeout_async(func, timeout, on_timeout):
 # --------------------
 def remove_emoji(text):
     """
-    Removes emoji characters from the given text.
+    Removes emoji characters from the given text, including Discord custom emojis.
     """
+    # Regex pattern for Unicode emojis
     emoji_pattern = re.compile(
-        "[\U0001F600-\U0001F64F"  # emoticons
-        "\U0001F300-\U0001F5FF"   # symbols & pictographs
-        "\U0001F680-\U0001F6FF"   # transport & map symbols
-        "\U0001F700-\U0001F77F"   # alchemical symbols
-        "\U0001F780-\U0001F7FF"   # geometric shapes extended
-        "\U0001F800-\U0001F8FF"   # supplemental arrows-C
-        "\U0001F900-\U0001F9FF"   # supplemental symbols and pictographs
-        "\U0001FA00-\U0001FA6F"   # chess symbols, etc.
-        "\U0001FA70-\U0001FAFF"   # symbols and pictographs extended-A
-        "\U00002702-\U000027B0"   # dingbats
-        "\U000024C2-\U0001F251"   # enclosed characters
+        "[\U0001F600-\U0001F64F"  # Emoticons
+        "\U0001F300-\U0001F5FF"   # Symbols & pictographs
+        "\U0001F680-\U0001F6FF"   # Transport & map symbols
+        "\U0001F700-\U0001F77F"   # Alchemical symbols
+        "\U0001F780-\U0001F7FF"   # Geometric shapes extended
+        "\U0001F800-\U0001F8FF"   # Supplemental arrows-C
+        "\U0001F900-\U0001F9FF"   # Supplemental symbols and pictographs
+        "\U0001FA00-\U0001FA6F"   # Chess symbols, etc.
+        "\U0001FA70-\U0001FAFF"   # Symbols and pictographs extended-A
+        "\U00002702-\U000027B0"   # Dingbats
+        "\U000024C2-\U0001F251"   # Enclosed characters
         "]+", flags=re.UNICODE)
+    
+    # Regex pattern for Discord custom emojis (static and animated)
+    discord_emoji_pattern = re.compile(r"<a?:\w+:\d+>")
+    
     # Remove all emojis from the text
-    cleaned_text = re.sub(emoji_pattern, "", text).strip()
-    return cleaned_text
+    text = re.sub(emoji_pattern, "", text)
+    text = re.sub(discord_emoji_pattern, "", text)
+    
+    return text.strip()
 
 # --------------------
 # Internet Connection Test
@@ -100,6 +107,15 @@ def capture_message(cache_file, message_info, reply_message=None):
     # Retrieve format templates from configuration
     template_syntax = data.get("MessageFormatting", {}).get("user_format_syntax", "{message}")
     reply_template_syntax = data.get("MessageFormatting", {}).get("user_reply_format_syntax", "{message}")
+
+    # Remove user emojis (if true)
+    if data["MessageFormatting"]["remove_emojis"]["user"]:
+        message_info["message"] = remove_emoji(message_info["message"])
+        message_info["name"] = remove_emoji(message_info["name"])
+    
+        if reply_message is not None:
+            reply_message["message"] = remove_emoji(reply_message["message"])
+            reply_message["name"] = remove_emoji(reply_message["name"])
 
     # Prepare data for formatting
     syntax = {

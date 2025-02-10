@@ -147,6 +147,11 @@ class discord_AI_bot:
                         response = await cai.cai_response(cached_data)
                         logging.debug("AI response received: %s", response)
 
+                        # Remove AI emojis (if true)
+                        if data["MessageFormatting"]["remove_emojis"]["AI"]:
+                            response = utils.remove_emoji(response)
+                            logging.debug("AI response received (without emoji): %s", response)
+
                         # Send the response in the configured channel.
                         if response_channel is not None:
                             if data.get("Options", {}).get("send_message_line_by_line", False):

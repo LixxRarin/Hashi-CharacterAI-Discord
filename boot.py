@@ -19,7 +19,7 @@ yaml.preserve_quotes = True
 
 yaml.encoding = "utf-8"
 
-config_content = r"""version: "1.0.1" # Don't touch here
+config_content = r"""version: "1.0.2" # Don't touch here
 
 # Discord Bot Configuration
 Discord:
@@ -104,7 +104,6 @@ MessageFormatting:
   # Whether to remove emojis from user or/and AI messages.
   # If set to true, emojis will be stripped from user messages before they are processed.
   # Setting to false keeps emojis in the conversation.
-  # This option is not yet available!!!
 
   user_reply_format_syntax: "[(Reply: @{reply_name}:) {reply_message}]\n[[time} ~ @{username} - {name}:] {message}"
   user_format_syntax: "[{time} ~ @{username} - {name}:] {message}"
