@@ -37,7 +37,7 @@ It is worth noting that this project does not yet have a definitive name TwT...
 
 ## 🚧 Roadmap
 ### Core Improvements
-- [ ] Emoji filtering system
+- [x] Emoji filtering system
 - [ ] DM interaction support
 - [ ] Multi-language translation
 - [ ] Multi-bot instance support
