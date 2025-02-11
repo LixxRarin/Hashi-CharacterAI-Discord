@@ -2,6 +2,7 @@ import os
 import time
 import os
 import sys
+import re
 import requests
 import subprocess
 from pathlib import Path
@@ -21,14 +22,6 @@ console_handler = logging.StreamHandler()
 console_handler.setLevel(logging.DEBUG)  # Set console log level
 console_handler.setFormatter(logging.Formatter('[%(filename)s] %(levelname)s : %(message)s'))
 
-import os
-import sys
-import json
-import requests
-import subprocess
-from pathlib import Path
-from packaging import version
-import re
 
 class AutoUpdater:
     def __init__(self, repo_url, current_version, branch="main", is_exe=None):
@@ -392,7 +385,7 @@ def startup_screen():
 {Fore.YELLOW}Description: {Fore.WHITE}An AI-powered Discord bot using Character.AI! :3 
 {Fore.YELLOW}Creator: {Fore.WHITE}LixxRarin
 {Fore.YELLOW}GitHub: {Fore.WHITE}https://github.com/LixxRarin/CharacterAI-Discord-Bridge
-{Fore.YELLOW}Version: {Fore.WHITE}1.0.2 (first release)
+{Fore.YELLOW}Version: {Fore.WHITE}1.0.2
 {Style.RESET_ALL}
 """
 
@@ -406,7 +399,7 @@ config.check()
 
 try:
     with open("config.yml", "r", encoding="utf-8") as file:
-        data = yaml.safe_load(file)
+        data = yaml.load(file)
     logging.info("Configuration file 'config.yml' loaded successfully.")
 except FileNotFoundError as e:
     logging.critical("The configuration file 'config.yml' does not exist: %s", e)
