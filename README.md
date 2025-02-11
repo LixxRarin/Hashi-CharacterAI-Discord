@@ -129,6 +129,9 @@ Never share your token with anyone!!!
 2. Copy everything after last slash
 
 ## 🔄 Updating
+
+> The program now updates itself, but if you need to, you can do it manually
+
 1. **Windows**: Replace executable
 2. **Source**: 
 ```bash

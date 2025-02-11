@@ -1,8 +1,15 @@
 import os
 import time
+import os
+import sys
+import requests
+import subprocess
+from pathlib import Path
+from packaging import version
 from colorama import init, Fore, Style
 import logging
 from ruamel.yaml import YAML
+from selfupdate import update
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -14,12 +21,158 @@ console_handler = logging.StreamHandler()
 console_handler.setLevel(logging.DEBUG)  # Set console log level
 console_handler.setFormatter(logging.Formatter('[%(filename)s] %(levelname)s : %(message)s'))
 
+import os
+import sys
+import json
+import requests
+import subprocess
+from pathlib import Path
+from packaging import version
+import re
+
+class AutoUpdater:
+    def __init__(self, repo_url, current_version, branch="main", is_exe=None):
+        """
+        Initializes the AutoUpdater.
+        
+        param repo_url: URL of the Git repository (e.g. git@github.com:LixxRarin/CharacterAI-Discord-Bridge.git)
+        param current_version: Current version of the program (e.g. “1.0.0”)
+        param branch: Branch for update (default: “main”)
+        param is_exe: Whether the program is running as an executable (None for automatic detection)
+        """
+
+        self.repo_url = repo_url
+        self.current_version = current_version
+        self.branch = branch
+        self.is_exe = is_exe if is_exe is not None else self.is_running_as_exe()
+        
+        # Extrai o dono e nome do repositório da URL
+        self.repo_owner, self.repo_name = self._extract_repo_info(repo_url)
+        self.base_url = f"https://api.github.com/repos/{self.repo_owner}/{self.repo_name}"
+        self.headers = {'Accept': 'application/vnd.github.v3+json'}
+        
+        # Configura paths dinâmicos
+        self.exe_path = Path(sys.executable).resolve() if self.is_exe else None
+        self.script_dir = Path(__file__).parent.resolve()
+
+    def check_and_update(self):
+        """
+        Checks for and applies updates, restarting the program if necessary.
+        """
+        if self.is_exe:
+            latest_release = self._get_latest_release()
+            if latest_release and version.parse(latest_release['tag_name']) > version.parse(self.current_version):
+                self._update_exe(latest_release)
+        else:
+            if self._update_from_commit():
+                # Reinicia o programa apenas se a atualização for bem-sucedida
+                self._restart_program()
+
+    def _extract_repo_info(self, repo_url):
+        """
+        Extracts the owner and repository name from the URL.
+        
+        repo_url: Repository URL (ex: git@github.com:LixxRarin/CharacterAI-Discord-Bridge.git)
+        return: (repo_owner, repo_name)
+        """
+        match = re.match(r"(?:git@github\.com:|https:\/\/github\.com\/)([\w-]+)\/([\w-]+)(?:\.git)?", repo_url)
+        if not match:
+            raise ValueError("URL do repositório inválida")
+        return match.group(1), match.group(2)
+
+    def _get_latest_release(self):
+        """
+        Search for the latest release on GitHub.
+        """
+        try:
+            response = requests.get(f"{self.base_url}/releases/latest", headers=self.headers)
+            return response.json() if response.status_code == 200 else None
+        except Exception as e:
+            logging.error(f"Error when searching for release: {e}")
+            return None
+
+    def _update_exe(self, release_data):
+        """
+        Update the executable (.exe) using the latest release from GitHub.
+        """
+        asset = next((a for a in release_data['assets'] if a['name'].endswith('.exe')), None)
+        if not asset:
+            logging.error("No .exe assets found in the release")
+            return
+
+        try:
+            # Baixar novo executável
+            download_url = asset['browser_download_url']
+            new_exe = requests.get(download_url).content
+            
+            # Criar script de atualização
+            update_script = f"""
+            @echo off
+            TIMEOUT /T 3 /NOBREAK
+            del "{self.exe_path}"
+            echo {new_exe} > "{self.exe_path}"
+            start "" "{self.exe_path}"
+            del "%~f0"
+            """
+        
+            # Salvar e executar script
+            with open("update.bat", "w") as f:
+                f.write(update_script)
+            
+            subprocess.Popen(["update.bat"], shell=True)
+            sys.exit(0)
+            
+        except Exception as e:
+            logging.error(f"Update failure: {e}")
+
+    def _update_from_commit(self):
+        """
+        Updates the source code using Git or a fallback library.
+        
+        return: True if the update is successful, False otherwise.
+        """
+        try:
+            if (self.script_dir / '.git').exists():
+                # Verifica se há alterações locais que podem causar conflitos
+                status = subprocess.run(['git', 'status', '--porcelain'], capture_output=True, text=True, cwd=self.script_dir)
+                if status.stdout.strip():
+                    logging.warning("There are uncommitted local changes. Consider committing or discarding them.")
+                
+                # Força a atualização, descartando alterações locais
+                subprocess.run(['git', 'fetch', 'origin', self.branch], check=True, cwd=self.script_dir)
+                subprocess.run(['git', 'reset', '--hard', f'origin/{self.branch}'], check=True, cwd=self.script_dir)
+                logging.info(f"Bridge has been successfully updated via Git (branch: {self.branch})")
+                return True
+            else:
+                from selfupdate import update
+                update()
+                return True
+        except Exception as e:
+            logging.error(f"Code update failure: {e}")
+            return False
+
+    def _restart_program(self):
+        """
+        Restart the program after the update.
+        """
+        if self.is_exe:
+            subprocess.Popen([str(self.exe_path)])
+        else:
+            subprocess.Popen([sys.executable] + sys.argv)
+        sys.exit(0)
+
+    @staticmethod
+    def is_running_as_exe():
+        """
+        Check that the program is running as an executable (.exe).
+        """
+        return getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS')
+
 yaml = YAML()
 yaml.preserve_quotes = True
-
 yaml.encoding = "utf-8"
 
-config_content = r"""version: "1.0.2" # Don't touch here
+config_content = r"""version: "1.0.3" # Don't touch here
 
 # Discord Bot Configuration
 Discord:
@@ -77,6 +230,18 @@ CAI:
 
 # Bot Interaction Settings
 Options:
+  auto_update: true # If true, the program will check for a new update every time it starts up
+  #If true, the program will automatically search for an update
+  # For realases or commits, this depends on how you run Bridge
+
+  repo_url: "git@github.com:LixxRarin/CharacterAI-Discord-Bridge.git" # Repository url
+  # This is the repository where the program will check and update.
+  # Only touch this if you know what you're doing here!
+
+  repo_branch: "main" 
+  # This is the branch where the program will check and update.
+  # Only touch this if you know what you're doing here!
+  
   max_response_attempts: -1  # Set the number of response attempts, -1 for automatic retries.
   # The bot will try to respond a maximum of this many times. If set to -1, the bot will keep retrying until a valid response is received.
 
@@ -108,7 +273,6 @@ MessageFormatting:
   user_reply_format_syntax: "[(Reply: @{reply_name}:) {reply_message}]\n[[time} ~ @{username} - {name}:] {message}"
   user_format_syntax: "[{time} ~ @{username} - {name}:] {message}"
 """
-
 
 class ConfigVersion:
     def __init__(self, config_file="config.yml"):
@@ -228,7 +392,7 @@ def startup_screen():
 {Fore.YELLOW}Description: {Fore.WHITE}An AI-powered Discord bot using Character.AI! :3 
 {Fore.YELLOW}Creator: {Fore.WHITE}LixxRarin
 {Fore.YELLOW}GitHub: {Fore.WHITE}https://github.com/LixxRarin/CharacterAI-Discord-Bridge
-{Fore.YELLOW}Version: {Fore.WHITE}1.0.1
+{Fore.YELLOW}Version: {Fore.WHITE}1.0.2 (first release)
 {Style.RESET_ALL}
 """
 
@@ -239,3 +403,21 @@ def startup_screen():
 startup_screen()
 config = ConfigVersion()
 config.check()
+
+try:
+    with open("config.yml", "r", encoding="utf-8") as file:
+        data = yaml.safe_load(file)
+    logging.info("Configuration file 'config.yml' loaded successfully.")
+except FileNotFoundError as e:
+    logging.critical("The configuration file 'config.yml' does not exist: %s", e)
+    exit()
+
+updater = AutoUpdater(
+    repo_url=data["Options"]["repo_url"],
+    current_version="1.0.2",
+    branch="main"
+)
+
+# Runs the update (if true)
+if data["Options"]["auto_update"]:
+    updater.check_and_update()
