@@ -228,7 +228,7 @@ def startup_screen():
 {Fore.YELLOW}Description: {Fore.WHITE}An AI-powered Discord bot using Character.AI! :3 
 {Fore.YELLOW}Creator: {Fore.WHITE}LixxRarin
 {Fore.YELLOW}GitHub: {Fore.WHITE}https://github.com/LixxRarin/CharacterAI-Discord-Bridge
-{Fore.YELLOW}Version: {Fore.WHITE}1.0.0 (first release)
+{Fore.YELLOW}Version: {Fore.WHITE}1.0.1
 {Style.RESET_ALL}
 """
 
