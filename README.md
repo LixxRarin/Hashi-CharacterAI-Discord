@@ -82,7 +82,7 @@ It is worth noting that this project does not yet have a definitive name TwT...
 sudo apt update && sudo apt install python3.11
 
 # Clone repository
-git clone https://github.com/yourusername/bridge.git
+git clone git@github.com:LixxRarin/CharacterAI-Discord-Bridge.git
 cd bridge
 
 # Install dependencies
