@@ -31,7 +31,7 @@ yaml.preserve_quotes = True
 yaml.encoding = "utf-8"
 
 # Default configuration content
-DEFAULT_CONFIG_CONTENT = r"""version: "1.0.4" # Don't touch here
+DEFAULT_CONFIG_CONTENT = r"""version: "1.0.5" # Don't touch here
 
 # Discord Bot Configuration
 Discord:
@@ -133,13 +133,12 @@ MessageFormatting:
   user_format_syntax: "[{time} ~ @{username} - {name}:] {message}"
 """
 
-
 def merge_ordered(user_cfg, default_cfg):
     """
     Merges two CommentedMaps preserving the order from default_cfg.
     For each key in default_cfg, if user_cfg contains that key,
     its value is used (merging recursively for dicts).
-    Then, any extra keys from user_cfg are appended in their original order.
+    Extra keys in user_cfg that are not in default_cfg are discarded.
     """
     merged = CommentedMap()
     # Iterate over keys in default_cfg to preserve order
@@ -157,13 +156,6 @@ def merge_ordered(user_cfg, default_cfg):
             merged.ca.items[key] = user_cfg.ca.items.get(key)
         elif hasattr(default_cfg, 'ca') and key in default_cfg.ca.items:
             merged.ca.items[key] = default_cfg.ca.items.get(key)
-
-    # Append extra keys from user_cfg that are not in default_cfg, in original order
-    for key in user_cfg:
-        if key not in default_cfg:
-            merged[key] = user_cfg[key]
-            if hasattr(user_cfg, 'ca') and key in user_cfg.ca.items:
-                merged.ca.items[key] = user_cfg.ca.items.get(key)
     return merged
 
 class ConfigManager:
@@ -196,7 +188,8 @@ class ConfigManager:
     def merge_configs(self):
         """
         Merges the user's configuration with the default configuration,
-        preserving the order from the default file.
+        preserving the order from the default file and discarding keys
+        that are no longer present in the default.
         """
         if self.user_config is None:
             return self.default_config
@@ -374,14 +367,11 @@ def main():
     # Initialize AutoUpdater using configuration data
     updater = AutoUpdater(
         repo_url=config_data["Options"]["repo_url"],
-        current_version="1.0.3",
+        current_version="1.0.2",
         branch=config_data["Options"].get("repo_branch", "main")
     )
 
     if config_data["Options"].get("auto_update", False):
         updater.check_and_update()
-
-    # Place additional bot/application logic here
-
 
 main()
