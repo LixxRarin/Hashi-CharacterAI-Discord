@@ -5,3 +5,4 @@ ruamel.yaml
 pyyaml
 colorama
 requests
+packaging
