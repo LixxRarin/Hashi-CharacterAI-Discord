@@ -2,6 +2,7 @@ import os
 import time
 import sys
 import re
+import zipfile
 import requests
 import subprocess
 import logging
@@ -10,6 +11,7 @@ from packaging import version
 from colorama import init, Fore, Style
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap
+from io import BytesIO
 
 # Logging configuration
 logging.basicConfig(
@@ -281,14 +283,49 @@ class AutoUpdater:
             return None
 
     def _update_exe(self, release_data):
+        # Try to find an .exe asset
         asset = next((a for a in release_data.get('assets', []) if a.get('name', '').endswith('.exe')), None)
-        if not asset:
-            logging.error("No .exe asset found in the release")
-            return
+        if asset is None:
+            # If no .exe asset is found, try to locate a .zip asset
+            asset = next((a for a in release_data.get('assets', []) if a.get('name', '').endswith('.zip')), None)
+            if asset:
+                logging.info("Zip asset found for update, processing zip file...")
+                try:
+                    download_url = asset['browser_download_url']
+                    zip_content = requests.get(download_url).content
+                    zip_file = zipfile.ZipFile(BytesIO(zip_content))
+                    exe_filename = None
+                    # Look for the .exe file inside the zip archive
+                    for file in zip_file.namelist():
+                        if file.endswith('.exe'):
+                            exe_filename = file
+                            break
+                    if exe_filename is None:
+                        logging.error("No .exe file found in the zip archive.")
+                        return
+                    new_exe_content = zip_file.read(exe_filename)
+                    # Create update script for the new executable
+                    update_script = f"""
+@echo off
+TIMEOUT /T 3 /NOBREAK
+del "{self.exe_path}"
+echo {new_exe_content.decode('latin1', errors='ignore')} > "{self.exe_path}"
+start "" "{self.exe_path}"
+del "%~f0"
+"""
+                    with open("update.bat", "w", encoding="utf-8") as f:
+                        f.write(update_script)
+                    subprocess.Popen(["update.bat"], shell=True)
+                    sys.exit(0)
+                except Exception as e:
+                    logging.error("Update via zip failed: %s", e)
+                return
+            else:
+                logging.error("No suitable asset found for update (neither .exe nor .zip)")
+                return
         try:
             download_url = asset['browser_download_url']
             new_exe_content = requests.get(download_url).content
-
             update_script = f"""
 @echo off
 TIMEOUT /T 3 /NOBREAK
