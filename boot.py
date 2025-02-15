@@ -336,14 +336,19 @@ del "%~f0"
     def is_running_as_exe():
         return getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS')
 
+def return_version():
+    with open("version.txt", 'r') as file:
+        version = file.read().strip()
+    return version
+
 def startup_screen():
     os.system("cls" if os.name == "nt" else "clear")
     banner = f"""
-{Fore.CYAN}{Style.BRIGHT}Project: {Fore.WHITE}Bridge - CharacterAI personas in Discord.
+{Fore.CYAN}{Style.BRIGHT}Project: {Fore.WHITE}Bridge - Character.AI personas in Discord.
 {Fore.YELLOW}Description: {Fore.WHITE}An AI-powered Discord bot using Character.AI! :3
 {Fore.YELLOW}Creator: {Fore.WHITE}LixxRarin
 {Fore.YELLOW}GitHub: {Fore.WHITE}https://github.com/LixxRarin/CharacterAI-Discord-Bridge
-{Fore.YELLOW}Version: {Fore.WHITE}1.0.3
+{Fore.YELLOW}Version: {Fore.WHITE}{return_version()}
 {Style.RESET_ALL}
 """
     print(banner)
@@ -367,7 +372,7 @@ def main():
     # Initialize AutoUpdater using configuration data
     updater = AutoUpdater(
         repo_url=config_data["Options"]["repo_url"],
-        current_version="1.0.2",
+        current_version=return_version(),
         branch=config_data["Options"].get("repo_branch", "main")
     )
 
