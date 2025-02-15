@@ -1,17 +1,17 @@
 import os
 import time
-import os
 import sys
 import re
 import requests
 import subprocess
+import logging
 from pathlib import Path
 from packaging import version
 from colorama import init, Fore, Style
-import logging
 from ruamel.yaml import YAML
-from selfupdate import update
+from ruamel.yaml.comments import CommentedMap
 
+# Logging configuration
 logging.basicConfig(
     level=logging.DEBUG,
     filename="app.log",
@@ -19,153 +19,20 @@ logging.basicConfig(
     encoding="utf-8"
 )
 console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.DEBUG)  # Set console log level
+console_handler.setLevel(logging.DEBUG)
 console_handler.setFormatter(logging.Formatter('[%(filename)s] %(levelname)s : %(message)s'))
+logging.getLogger().addHandler(console_handler)
 
+# Initialize colorama for cross-platform colored output
+init(autoreset=True)
 
-class AutoUpdater:
-    def __init__(self, repo_url, current_version, branch="main", is_exe=None):
-        """
-        Initializes the AutoUpdater.
-        
-        param repo_url: URL of the Git repository (e.g. git@github.com:LixxRarin/CharacterAI-Discord-Bridge.git)
-        param current_version: Current version of the program (e.g. “1.0.0”)
-        param branch: Branch for update (default: “main”)
-        param is_exe: Whether the program is running as an executable (None for automatic detection)
-        """
-
-        self.repo_url = repo_url
-        self.current_version = current_version
-        self.branch = branch
-        self.is_exe = is_exe if is_exe is not None else self.is_running_as_exe()
-        
-        # Extrai o dono e nome do repositório da URL
-        self.repo_owner, self.repo_name = self._extract_repo_info(repo_url)
-        self.base_url = f"https://api.github.com/repos/{self.repo_owner}/{self.repo_name}"
-        self.headers = {'Accept': 'application/vnd.github.v3+json'}
-        
-        # Configura paths dinâmicos
-        self.exe_path = Path(sys.executable).resolve() if self.is_exe else None
-        self.script_dir = Path(__file__).parent.resolve()
-
-    def check_and_update(self):
-        """
-        Checks for and applies updates, restarting the program if necessary.
-        """
-        if self.is_exe:
-            latest_release = self._get_latest_release()
-            if latest_release and version.parse(latest_release['tag_name']) > version.parse(self.current_version):
-                self._update_exe(latest_release)
-        else:
-            if self._update_from_commit():
-                # Reinicia o programa apenas se a atualização for bem-sucedida
-                self._restart_program()
-
-    def _extract_repo_info(self, repo_url):
-        """
-        Extracts the owner and repository name from the URL.
-        
-        repo_url: Repository URL (ex: git@github.com:LixxRarin/CharacterAI-Discord-Bridge.git)
-        return: (repo_owner, repo_name)
-        """
-        match = re.match(r"(?:git@github\.com:|https:\/\/github\.com\/)([\w-]+)\/([\w-]+)(?:\.git)?", repo_url)
-        if not match:
-            raise ValueError("URL do repositório inválida")
-        return match.group(1), match.group(2)
-
-    def _get_latest_release(self):
-        """
-        Search for the latest release on GitHub.
-        """
-        try:
-            response = requests.get(f"{self.base_url}/releases/latest", headers=self.headers)
-            return response.json() if response.status_code == 200 else None
-        except Exception as e:
-            logging.error(f"Error when searching for release: {e}")
-            return None
-
-    def _update_exe(self, release_data):
-        """
-        Update the executable (.exe) using the latest release from GitHub.
-        """
-        asset = next((a for a in release_data['assets'] if a['name'].endswith('.exe')), None)
-        if not asset:
-            logging.error("No .exe assets found in the release")
-            return
-
-        try:
-            # Baixar novo executável
-            download_url = asset['browser_download_url']
-            new_exe = requests.get(download_url).content
-            
-            # Criar script de atualização
-            update_script = f"""
-            @echo off
-            TIMEOUT /T 3 /NOBREAK
-            del "{self.exe_path}"
-            echo {new_exe} > "{self.exe_path}"
-            start "" "{self.exe_path}"
-            del "%~f0"
-            """
-        
-            # Salvar e executar script
-            with open("update.bat", "w") as f:
-                f.write(update_script)
-            
-            subprocess.Popen(["update.bat"], shell=True)
-            sys.exit(0)
-            
-        except Exception as e:
-            logging.error(f"Update failure: {e}")
-
-    def _update_from_commit(self):
-        """
-        Updates the source code using Git or a fallback library.
-        
-        return: True if the update is successful, False otherwise.
-        """
-        try:
-            if (self.script_dir / '.git').exists():
-                # Verifica se há alterações locais que podem causar conflitos
-                status = subprocess.run(['git', 'status', '--porcelain'], capture_output=True, text=True, cwd=self.script_dir)
-                if status.stdout.strip():
-                    logging.warning("There are uncommitted local changes. Consider committing or discarding them.")
-                
-                # Força a atualização, descartando alterações locais
-                subprocess.run(['git', 'fetch', 'origin', self.branch], check=True, cwd=self.script_dir)
-                subprocess.run(['git', 'reset', '--hard', f'origin/{self.branch}'], check=True, cwd=self.script_dir)
-                logging.info(f"Bridge has been successfully updated via Git (branch: {self.branch})")
-                return True
-            else:
-                from selfupdate import update
-                update()
-                return True
-        except Exception as e:
-            logging.error(f"Code update failure: {e}")
-            return False
-
-    def _restart_program(self):
-        """
-        Restart the program after the update.
-        """
-        if self.is_exe:
-            subprocess.Popen([str(self.exe_path)])
-        else:
-            subprocess.Popen([sys.executable] + sys.argv)
-        sys.exit(0)
-
-    @staticmethod
-    def is_running_as_exe():
-        """
-        Check that the program is running as an executable (.exe).
-        """
-        return getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS')
-
-yaml = YAML()
+# Set up ruamel.yaml in round-trip mode (preserves order and comments)
+yaml = YAML(typ='rt')
 yaml.preserve_quotes = True
 yaml.encoding = "utf-8"
 
-config_content = r"""version: "1.0.3" # Don't touch here
+# Default configuration content
+DEFAULT_CONFIG_CONTENT = r"""version: "1.0.4" # Don't touch here
 
 # Discord Bot Configuration
 Discord:
@@ -267,25 +134,49 @@ MessageFormatting:
   user_format_syntax: "[{time} ~ @{username} - {name}:] {message}"
 """
 
-class ConfigVersion:
+
+def merge_ordered(user_cfg, default_cfg):
+    """
+    Merges two CommentedMaps preserving the order from default_cfg.
+    For each key in default_cfg, if user_cfg contains that key,
+    its value is used (merging recursively for dicts).
+    Then, any extra keys from user_cfg are appended in their original order.
+    """
+    merged = CommentedMap()
+    # Iterate over keys in default_cfg to preserve order
+    for key, default_val in default_cfg.items():
+        if key in user_cfg:
+            user_val = user_cfg[key]
+            if isinstance(default_val, dict) and isinstance(user_val, dict):
+                merged[key] = merge_ordered(user_val, default_val)
+            else:
+                merged[key] = user_val
+        else:
+            merged[key] = default_val
+        # Preserve comments if available
+        if hasattr(user_cfg, 'ca') and key in user_cfg.ca.items:
+            merged.ca.items[key] = user_cfg.ca.items.get(key)
+        elif hasattr(default_cfg, 'ca') and key in default_cfg.ca.items:
+            merged.ca.items[key] = default_cfg.ca.items.get(key)
+
+    # Append extra keys from user_cfg that are not in default_cfg, in original order
+    for key in user_cfg:
+        if key not in default_cfg:
+            merged[key] = user_cfg[key]
+            if hasattr(user_cfg, 'ca') and key in user_cfg.ca.items:
+                merged.ca.items[key] = user_cfg.ca.items.get(key)
+    return merged
+
+class ConfigManager:
     def __init__(self, config_file="config.yml"):
         """
-        Initializes the configuration manager.
-        Loads the default configuration and user configuration if available.
+        Manages the configuration file.
         """
         self.config_file = config_file
-
-        # Load default configuration as a dictionary
-        self.default_config = yaml.load(config_content)
-
-        # Load user configuration if it exists, otherwise None
+        self.default_config = yaml.load(DEFAULT_CONFIG_CONTENT)
         self.user_config = self.load_user_config()
 
     def load_user_config(self):
-        """
-        Loads the user's configuration file.
-        If the file does not exist, returns None.
-        """
         if not os.path.exists(self.config_file):
             return None
         try:
@@ -296,75 +187,39 @@ class ConfigVersion:
             return None
 
     def is_version_outdated(self):
-        """
-        Checks if the user's configuration version is outdated.
-        Returns True if the user's version is older than the default version.
-        """
         user_version = self.user_config.get("version") if self.user_config else None
         default_version = self.default_config.get("version")
-        
         if user_version is None:
-            logging.warning("No version found in user config. Assuming outdated.")
+            logging.warning("No version found in user configuration. Assuming outdated.")
             return True
-        
-        return user_version < default_version
+        return version.parse(user_version) < version.parse(default_version)
 
-    def merge_configs(self, user_cfg, default_cfg, root=True):
+    def merge_configs(self):
         """
-        Recursively merges the default configuration into the user's configuration.
-        - Removes keys from user_cfg that no longer exist in default_cfg.
-        - Adds new keys from default_cfg to user_cfg.
-        - Retains user-defined values for existing keys.
-        - Ensures the version is updated only in the root dictionary.
+        Merges the user's configuration with the default configuration,
+        preserving the order from the default file.
         """
-        if root:
-            # Ensure 'version' is NOT removed during cleanup
-            keys_to_remove = [key for key in user_cfg if key not in default_cfg and key != "version"]
-        else:
-            keys_to_remove = [key for key in user_cfg if key not in default_cfg]
+        if self.user_config is None:
+            return self.default_config
+        merged = merge_ordered(self.user_config, self.default_config)
+        # Ensure the root "version" is updated
+        merged["version"] = self.default_config.get("version")
+        return merged
 
-        for key in keys_to_remove:
-            logging.info("Removing obsolete key: %s", key)
-            del user_cfg[key]
-
-        for key, default_value in default_cfg.items():
-            if key in user_cfg:
-                if isinstance(default_value, dict) and isinstance(user_cfg[key], dict):
-                    self.merge_configs(user_cfg[key], default_value, root=False)
-                elif not isinstance(user_cfg[key], type(default_value)):
-                    logging.info("Updating key: %s (Type mismatch, replacing with default)", key)
-                    user_cfg[key] = default_value
-            else:
-                logging.info("Adding new key: %s", key)
-                user_cfg[key] = default_value
-
-        # Only update 'version' at the root level
-        if root:
-            user_cfg["version"] = default_cfg.get("version")
-
-        return user_cfg
-
-    def check(self):
-        """
-        Checks the configuration file and updates it if necessary.
-        - If no config file exists, it creates one using the default configuration.
-        - If the config file is outdated, it updates it while preserving user values.
-        """
-        # If no user config exists, create a new one with the default configuration
+    def check_and_update(self):
         if self.user_config is None:
             logging.warning("Configuration file '%s' not found. Creating a new one...", self.config_file)
             try:
                 with open(self.config_file, "w", encoding="utf-8") as f:
-                    f.write(config_content)
+                    yaml.dump(self.default_config, f)
                 logging.info("Configuration file '%s' created successfully!", self.config_file)
             except Exception as e:
                 logging.critical("Failed to create configuration file: %s", e)
             return
 
-        # If user configuration is outdated, merge and update the file
         if self.is_version_outdated():
-            logging.warning("Updating '%s' to the latest version: %s", self.config_file, self.default_config.get("version"))
-            updated_config = self.merge_configs(self.user_config, self.default_config)
+            logging.warning("Updating configuration '%s' to version %s", self.config_file, self.default_config.get("version"))
+            updated_config = self.merge_configs()
             try:
                 with open(self.config_file, "w", encoding="utf-8") as f:
                     yaml.dump(updated_config, f)
@@ -372,45 +227,162 @@ class ConfigVersion:
             except Exception as e:
                 logging.critical("Failed to update configuration file: %s", e)
         else:
-            logging.info("Configuration file '%s' is up-to-date. No changes needed.", self.config_file)
+            logging.info("Configuration file '%s' is up-to-date.", self.config_file)
 
-# Initialize colorama (for Windows compatibility)
-init(autoreset=True)
+class AutoUpdater:
+    def __init__(self, repo_url, current_version, branch="main", is_exe=None):
+        """
+        Initializes the AutoUpdater.
+        
+        :param repo_url: Git repository URL (e.g., git@github.com:username/repo.git)
+        :param current_version: Current version of the program (e.g., "1.0.2")
+        :param branch: Branch to check for updates (default: "main")
+        :param is_exe: Whether the program is running as an executable (auto-detected if None)
+        """
+        self.repo_url = repo_url
+        self.current_version = current_version
+        self.branch = branch
+        self.is_exe = is_exe if is_exe is not None else self.is_running_as_exe()
+        
+        # Extract repository owner and name from URL
+        self.repo_owner, self.repo_name = self._extract_repo_info(repo_url)
+        self.base_url = f"https://api.github.com/repos/{self.repo_owner}/{self.repo_name}"
+        self.headers = {'Accept': 'application/vnd.github.v3+json'}
+        
+        self.exe_path = Path(sys.executable).resolve() if self.is_exe else None
+        self.script_dir = Path(__file__).parent.resolve()
+
+    def check_and_update(self):
+        # Avoid infinite update loops by checking an environment flag
+        if os.environ.get("SKIP_AUTOUPDATE") == "1":
+            logging.info("Skipping update check to avoid infinite restart loop.")
+            return
+
+        if self.is_exe:
+            latest_release = self._get_latest_release()
+            if latest_release and version.parse(latest_release['tag_name']) > version.parse(self.current_version):
+                logging.info("New executable version detected. Updating...")
+                self._update_exe(latest_release)
+            else:
+                logging.info("No executable updates available.")
+        else:
+            if self._update_from_commit():
+                logging.info("Source update applied; restarting program.")
+                self._restart_program()
+
+    def _extract_repo_info(self, repo_url):
+        match = re.match(r"(?:git@github\.com:|https:\/\/github\.com\/)([\w-]+)/([\w-]+)(?:\.git)?", repo_url)
+        if not match:
+            raise ValueError("Invalid repository URL")
+        return match.group(1), match.group(2)
+
+    def _get_latest_release(self):
+        try:
+            response = requests.get(f"{self.base_url}/releases/latest", headers=self.headers)
+            if response.status_code == 200:
+                return response.json()
+            else:
+                logging.error("Failed to fetch latest release: Status code %s", response.status_code)
+                return None
+        except Exception as e:
+            logging.error("Error fetching release: %s", e)
+            return None
+
+    def _update_exe(self, release_data):
+        asset = next((a for a in release_data.get('assets', []) if a.get('name', '').endswith('.exe')), None)
+        if not asset:
+            logging.error("No .exe asset found in the release")
+            return
+        try:
+            download_url = asset['browser_download_url']
+            new_exe_content = requests.get(download_url).content
+
+            update_script = f"""
+@echo off
+TIMEOUT /T 3 /NOBREAK
+del "{self.exe_path}"
+echo {new_exe_content.decode('latin1', errors='ignore')} > "{self.exe_path}"
+start "" "{self.exe_path}"
+del "%~f0"
+"""
+            with open("update.bat", "w", encoding="utf-8") as f:
+                f.write(update_script)
+            subprocess.Popen(["update.bat"], shell=True)
+            sys.exit(0)
+        except Exception as e:
+            logging.error("Executable update failed: %s", e)
+
+    def _update_from_commit(self):
+        try:
+            if (self.script_dir / '.git').exists():
+                status = subprocess.run(['git', 'status', '--porcelain'], capture_output=True, text=True, cwd=self.script_dir)
+                if status.stdout.strip():
+                    logging.warning("There are uncommitted local changes. Consider committing or discarding them.")
+                subprocess.run(['git', 'fetch', 'origin', self.branch], check=True, cwd=self.script_dir)
+                subprocess.run(['git', 'reset', '--hard', f'origin/{self.branch}'], check=True, cwd=self.script_dir)
+                logging.info("Code updated via Git (branch: %s)", self.branch)
+                return True
+            else:
+                from selfupdate import update
+                update()
+                logging.info("Code updated via selfupdate library.")
+                return True
+        except Exception as e:
+            logging.error("Source update failed: %s", e)
+            return False
+
+    def _restart_program(self):
+        new_env = os.environ.copy()
+        new_env["SKIP_AUTOUPDATE"] = "1"
+        if self.is_exe:
+            subprocess.Popen([str(self.exe_path)], env=new_env)
+        else:
+            subprocess.Popen([sys.executable] + sys.argv, env=new_env)
+        sys.exit(0)
+
+    @staticmethod
+    def is_running_as_exe():
+        return getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS')
 
 def startup_screen():
-    os.system("cls" if os.name == "nt" else "clear")  # Clear the console (Windows & Linux/macOS)
-    
+    os.system("cls" if os.name == "nt" else "clear")
     banner = f"""
 {Fore.CYAN}{Style.BRIGHT}Project: {Fore.WHITE}Bridge - CharacterAI personas in Discord.
-{Fore.YELLOW}Description: {Fore.WHITE}An AI-powered Discord bot using Character.AI! :3 
+{Fore.YELLOW}Description: {Fore.WHITE}An AI-powered Discord bot using Character.AI! :3
 {Fore.YELLOW}Creator: {Fore.WHITE}LixxRarin
 {Fore.YELLOW}GitHub: {Fore.WHITE}https://github.com/LixxRarin/CharacterAI-Discord-Bridge
-{Fore.YELLOW}Version: {Fore.WHITE}1.0.2
+{Fore.YELLOW}Version: {Fore.WHITE}1.0.3
 {Style.RESET_ALL}
 """
-
     print(banner)
-    time.sleep(2)  # Pause for 2 seconds before proceeding
+    time.sleep(2)
 
-# Call the function to display the startup screen
-startup_screen()
-config = ConfigVersion()
-config.check()
+def main():
+    startup_screen()
 
-try:
-    with open("config.yml", "r", encoding="utf-8") as file:
-        data = yaml.load(file)
-    logging.info("Configuration file 'config.yml' loaded successfully.")
-except FileNotFoundError as e:
-    logging.critical("The configuration file 'config.yml' does not exist: %s", e)
-    exit()
+    # Manage and update the configuration file
+    config_manager = ConfigManager()
+    config_manager.check_and_update()
 
-updater = AutoUpdater(
-    repo_url=data["Options"]["repo_url"],
-    current_version="1.0.2",
-    branch="main"
-)
+    try:
+        with open("config.yml", "r", encoding="utf-8") as file:
+            config_data = yaml.load(file)
+        logging.info("Configuration file 'config.yml' loaded successfully.")
+    except FileNotFoundError as e:
+        logging.critical("Configuration file 'config.yml' not found: %s", e)
+        sys.exit(1)
 
-# Runs the update (if true)
-if data["Options"]["auto_update"]:
-    updater.check_and_update()
+    # Initialize AutoUpdater using configuration data
+    updater = AutoUpdater(
+        repo_url=config_data["Options"]["repo_url"],
+        current_version="1.0.3",
+        branch=config_data["Options"].get("repo_branch", "main")
+    )
+
+    if config_data["Options"].get("auto_update", False):
+        updater.check_and_update()
+
+    # Place additional bot/application logic here
+
+if __name__ == "__main__":
+    main()
