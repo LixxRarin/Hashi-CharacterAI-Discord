@@ -24,6 +24,12 @@ console_handler = logging.StreamHandler()
 console_handler.setLevel(logging.DEBUG)
 console_handler.setFormatter(logging.Formatter('[%(filename)s] %(levelname)s : %(message)s'))
 
+try:
+    with open("version.txt", "x") as file:
+        file.write("1.0.3\n")
+except FileExistsError:
+    pass
+
 # Initialize colorama for cross-platform colored output
 init(autoreset=True)
 
@@ -223,6 +229,91 @@ class ConfigManager:
         else:
             logging.info("Configuration file '%s' is up-to-date.", self.config_file)
 
+def merge_ordered(user_cfg, default_cfg):
+    """
+    Merges two CommentedMaps preserving the order from default_cfg.
+    For each key in default_cfg, if user_cfg contains that key,
+    its value is used (merging recursively for dicts).
+    Extra keys in user_cfg that are not in default_cfg are discarded.
+    """
+    merged = CommentedMap()
+    for key, default_val in default_cfg.items():
+        if key in user_cfg:
+            user_val = user_cfg[key]
+            if isinstance(default_val, dict) and isinstance(user_val, dict):
+                merged[key] = merge_ordered(user_val, default_val)
+            else:
+                merged[key] = user_val
+        else:
+            merged[key] = default_val
+        if hasattr(user_cfg, 'ca') and key in user_cfg.ca.items:
+            merged.ca.items[key] = user_cfg.ca.items.get(key)
+        elif hasattr(default_cfg, 'ca') and key in default_cfg.ca.items:
+            merged.ca.items[key] = default_cfg.ca.items.get(key)
+    return merged
+
+class ConfigManager:
+    def __init__(self, config_file="config.yml"):
+        """
+        Manages the configuration file.
+        """
+        self.config_file = config_file
+        self.default_config = yaml.load(DEFAULT_CONFIG_CONTENT)
+        self.user_config = self.load_user_config()
+
+    def load_user_config(self):
+        if not os.path.exists(self.config_file):
+            return None
+        try:
+            with open(self.config_file, "r", encoding="utf-8") as f:
+                return yaml.load(f)
+        except Exception as e:
+            logging.error("Error loading user configuration: %s", e)
+            return None
+
+    def is_version_outdated(self):
+        user_version = self.user_config.get("version") if self.user_config else None
+        default_version = self.default_config.get("version")
+        if user_version is None:
+            logging.warning("No version found in user configuration. Assuming outdated.")
+            return True
+        return version.parse(user_version) < version.parse(default_version)
+
+    def merge_configs(self):
+        """
+        Merges the user's configuration with the default configuration,
+        preserving the order from the default file and discarding keys
+        that are no longer present in the default.
+        """
+        if self.user_config is None:
+            return self.default_config
+        merged = merge_ordered(self.user_config, self.default_config)
+        merged["version"] = self.default_config.get("version")
+        return merged
+
+    def check_and_update(self):
+        if self.user_config is None:
+            logging.warning("Configuration file '%s' not found. Creating a new one...", self.config_file)
+            try:
+                with open(self.config_file, "w", encoding="utf-8") as f:
+                    yaml.dump(self.default_config, f)
+                logging.info("Configuration file '%s' created successfully!", self.config_file)
+            except Exception as e:
+                logging.critical("Failed to create configuration file: %s", e)
+            return
+
+        if self.is_version_outdated():
+            logging.warning("Updating configuration '%s' to version %s", self.config_file, self.default_config.get("version"))
+            updated_config = self.merge_configs()
+            try:
+                with open(self.config_file, "w", encoding="utf-8") as f:
+                    yaml.dump(updated_config, f)
+                logging.info("Configuration file '%s' updated successfully!", self.config_file)
+            except Exception as e:
+                logging.critical("Failed to update configuration file: %s", e)
+        else:
+            logging.info("Configuration file '%s' is up-to-date.", self.config_file)
+
 class AutoUpdater:
     def __init__(self, repo_url, current_version, branch="main", is_exe=None):
         """
@@ -237,17 +328,13 @@ class AutoUpdater:
         self.current_version = current_version
         self.branch = branch
         self.is_exe = is_exe if is_exe is not None else self.is_running_as_exe()
-        
-        # Extract repository owner and name from URL
         self.repo_owner, self.repo_name = self._extract_repo_info(repo_url)
         self.base_url = f"https://api.github.com/repos/{self.repo_owner}/{self.repo_name}"
         self.headers = {'Accept': 'application/vnd.github.v3+json'}
-        
         self.exe_path = Path(sys.executable).resolve() if self.is_exe else None
         self.script_dir = Path(__file__).parent.resolve()
 
     def check_and_update(self):
-        # Avoid infinite update loops by checking an environment flag
         if os.environ.get("SKIP_AUTOUPDATE") == "1":
             logging.info("Skipping update check to avoid infinite restart loop.")
             return
@@ -283,10 +370,11 @@ class AutoUpdater:
             return None
 
     def _update_exe(self, release_data):
-        # Try to find an .exe asset
+        new_version = release_data.get('tag_name', self.current_version)
+        # Try to find an .exe asset first
         asset = next((a for a in release_data.get('assets', []) if a.get('name', '').endswith('.exe')), None)
         if asset is None:
-            # If no .exe asset is found, try to locate a .zip asset
+            # If no .exe asset, try to find a .zip asset
             asset = next((a for a in release_data.get('assets', []) if a.get('name', '').endswith('.zip')), None)
             if asset:
                 logging.info("Zip asset found for update, processing zip file...")
@@ -295,7 +383,6 @@ class AutoUpdater:
                     zip_content = requests.get(download_url).content
                     zip_file = zipfile.ZipFile(BytesIO(zip_content))
                     exe_filename = None
-                    # Look for the .exe file inside the zip archive
                     for file in zip_file.namelist():
                         if file.endswith('.exe'):
                             exe_filename = file
@@ -304,19 +391,7 @@ class AutoUpdater:
                         logging.error("No .exe file found in the zip archive.")
                         return
                     new_exe_content = zip_file.read(exe_filename)
-                    # Create update script for the new executable
-                    update_script = f"""
-@echo off
-TIMEOUT /T 3 /NOBREAK
-del "{self.exe_path}"
-echo {new_exe_content.decode('latin1', errors='ignore')} > "{self.exe_path}"
-start "" "{self.exe_path}"
-del "%~f0"
-"""
-                    with open("update.bat", "w", encoding="utf-8") as f:
-                        f.write(update_script)
-                    subprocess.Popen(["update.bat"], shell=True)
-                    sys.exit(0)
+                    self._apply_update(new_exe_content, new_version)
                 except Exception as e:
                     logging.error("Update via zip failed: %s", e)
                 return
@@ -326,20 +401,40 @@ del "%~f0"
         try:
             download_url = asset['browser_download_url']
             new_exe_content = requests.get(download_url).content
-            update_script = f"""
-@echo off
-TIMEOUT /T 3 /NOBREAK
-del "{self.exe_path}"
-echo {new_exe_content.decode('latin1', errors='ignore')} > "{self.exe_path}"
-start "" "{self.exe_path}"
-del "%~f0"
-"""
-            with open("update.bat", "w", encoding="utf-8") as f:
-                f.write(update_script)
-            subprocess.Popen(["update.bat"], shell=True)
-            sys.exit(0)
+            self._apply_update(new_exe_content, new_version)
         except Exception as e:
             logging.error("Executable update failed: %s", e)
+
+    def _apply_update(self, new_exe_content, new_version):
+        """
+        Saves the new executable content to a temporary file and creates an update batch script
+        that replaces the current executable with the new one and updates version.txt.
+        """
+        temp_exe = self.exe_path.parent / "Bridge_new.exe"
+        try:
+            with open(temp_exe, "wb") as f:
+                f.write(new_exe_content)
+        except Exception as e:
+            logging.error("Failed to write temporary executable file: %s", e)
+            return
+
+        version_file = self.exe_path.parent / "version.txt"
+        update_script = f"""@echo off
+timeout /t 3 /nobreak >nul
+del "{self.exe_path}"
+move /Y "{temp_exe}" "{self.exe_path}"
+echo {new_version} > "{version_file}"
+start "" "{self.exe_path}"
+exit
+    """
+        try:
+            with open("update.bat", "w", encoding="utf-8") as f:
+                f.write(update_script)
+            # Launch update.bat in a new console window
+            subprocess.Popen(["update.bat"], shell=True, creationflags=subprocess.CREATE_NEW_CONSOLE)
+            sys.exit(0)
+        except Exception as e:
+            logging.error("Failed to execute update script: %s", e)
 
     def _update_from_commit(self):
         try:
