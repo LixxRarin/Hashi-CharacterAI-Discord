@@ -4,3 +4,4 @@ PyCharacterAI
 ruamel.yaml
 pyyaml
 colorama
+requests
