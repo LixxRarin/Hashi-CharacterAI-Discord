@@ -21,7 +21,6 @@ logging.basicConfig(
 console_handler = logging.StreamHandler()
 console_handler.setLevel(logging.DEBUG)
 console_handler.setFormatter(logging.Formatter('[%(filename)s] %(levelname)s : %(message)s'))
-logging.getLogger().addHandler(console_handler)
 
 # Initialize colorama for cross-platform colored output
 init(autoreset=True)
@@ -384,5 +383,5 @@ def main():
 
     # Place additional bot/application logic here
 
-if __name__ == "__main__":
-    main()
+
+main()
