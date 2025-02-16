@@ -26,7 +26,7 @@ console_handler.setFormatter(logging.Formatter('[%(filename)s] %(levelname)s : %
 
 try:
     with open("version.txt", "x") as file:
-        file.write("1.0.3\n")
+        file.write("1.0.4\n")
 except FileExistsError:
     pass
 
@@ -39,7 +39,7 @@ yaml.preserve_quotes = True
 yaml.encoding = "utf-8"
 
 # Default configuration content
-DEFAULT_CONFIG_CONTENT = r"""version: "1.0.5" # Don't touch here
+DEFAULT_CONFIG_CONTENT = r"""version: "1.0.7" # Don't touch here
 
 # Discord Bot Configuration
 Discord:
@@ -53,7 +53,6 @@ Discord:
 
   admin_role: [12345678]  # The ID of the administrator role in Discord.
   # Only users with this role will have administrator commands privileges.
-  # This option is not yet available!!!
 
   use_cai_avatar: true  # Whether to use the Character.AI profile picture for the bot.
   # If set to true, the bot will display the avatar from Character.AI.
@@ -76,10 +75,10 @@ CAI:
   # This is the unique identifier for the character you want the bot to use.
   # The default ID is from Neuro-Sama
 
-  chat_id: "---"
+  chat_id: null
   # This is the ID of the specific chat session you want the bot to join.
   # It allows the bot to maintain continuity in its interactions with users.
-  # Use “---” if you don't have a chat ID, the program will automatically fill in a new ID.
+  # Use “null” if you don't have a chat ID, the program will automatically fill in a new ID.
 
   new_chat_on_reset: true  # Whether to create a new chat session when resetting.
   # If set to true, a new chat session will be created each time the bot is reset.
@@ -94,6 +93,8 @@ CAI:
     Greet the participants and introduce yourself by fully translating your message into English.
 
     Now, send your message introducing yourself in the chat, following the language of this message!
+    # A system message is the first message that will be sent to your character
+    # Use 'system_message: null' to not use a system message
 
 # Bot Interaction Settings
 Options:
@@ -109,6 +110,13 @@ Options:
   # This is the branch where the program will check and update.
   # Only touch this if you know what you're doing here!
   
+  send_the_greeting_message: true
+  # Send the character first greeting message
+
+  send_the_system_message_reply: true
+  # Send the character reply to the system message
+  # This is ignored if the system message is null
+
   max_response_attempts: -1  # Set the number of response attempts, -1 for automatic retries.
   # The bot will try to respond a maximum of this many times. If set to -1, the bot will keep retrying until a valid response is received.
 

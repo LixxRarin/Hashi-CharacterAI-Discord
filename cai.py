@@ -15,7 +15,8 @@ logging.basicConfig(
 console_handler = logging.StreamHandler()
 console_handler.setLevel(logging.DEBUG)  # Set console log level
 console_handler.setFormatter(logging.Formatter('[%(filename)s] %(levelname)s : %(message)s'))
-#logging.getLogger().addHandler(console_handler)
+# Uncomment the next line to add console logging if needed:
+# logging.getLogger().addHandler(console_handler)
 
 # Initialize ruamel.yaml with desired settings.
 yaml = YAML()
@@ -51,29 +52,33 @@ async def get_bot_info():
 
     # Extract name and avatar URL from the character info.
     char_dict = types.character.Character.get_dict(character)
+    
     return {
         "name": char_dict.get("name"),
-        "avatar_url": types.Avatar.get_url(character.avatar)
+        "avatar_url": types.Avatar.get_url(character.avatar),
+        "title" : char_dict.get("title"),
+        "description" : char_dict.get("description"),
+        "visibility": char_dict.get("visibility"),
+        "num_interactions" : char_dict.get("num_interactions"),
+        "author_username" : char_dict.get("author_username")
     }
 
 async def new_chat_id(create):
     """
     Creates a new chat session if required, or returns the existing chat ID.
     Updates the configuration file if a new chat session is created.
+    Returns a tuple: (chat_id, greeting_message_obj).
+    If no new chat is created, greeting_message_obj will be None.
     """
-    if create or (data["CAI"].get("chat_id", "---") == "---"):
+    if create or (data["CAI"].get("chat_id", None) == None):
         try:
             client = await get_client(token=data["CAI"]["token"])
-            chat, greeting_message = await client.chat.create_chat(data["CAI"]["character_id"])
-            # Send system prompt message.
-            answer = await client.chat.send_message(
-                data["CAI"]["character_id"], chat.chat_id, data["CAI"]["system_message"]
-            )
-            logging.debug("Character response to system prompt: %s", answer.get_primary_candidate().text)
-            logging.info("New Chat ID created: %s", chat.chat_id)
+            chat, greeting_message_obj = await client.chat.create_chat(data["CAI"]["character_id"])
+            logging.debug("New Chat ID created: %s", chat.chat_id)
             
             # Update the chat_id in configuration data and write back to the config file.
             data["CAI"]["chat_id"] = chat.chat_id
+
             try:
                 with open("config.yml", "w", encoding="utf-8") as file:
                     yaml.dump(data, file)
@@ -81,12 +86,58 @@ async def new_chat_id(create):
             except Exception as e:
                 logging.error("Failed to update configuration file with new Chat ID: %s", e)
             
-            return chat.chat_id
+            return chat.chat_id, greeting_message_obj
         except Exception as e:
             logging.error("Error creating new chat session: %s", e)
-            return None
+            return None, None
     else:
-        return data["CAI"]["chat_id"]
+        return data["CAI"]["chat_id"], None
+
+async def initialize_messages():
+    """
+    Initializes and returns the character's first messages.
+    If a new chat is created, it uses the greeting message returned from the chat creation.
+    Otherwise, it optionally sends a system message.
+    """
+    global chat_restart
+    
+    greeting_message = None 
+    system_msg_reply = None
+
+    try:
+        # Get the client and ensure that we have a valid chat ID.
+        client = await get_client(token=data["CAI"]["token"])
+        chat_id, greeting_obj = await new_chat_id(chat_restart)
+        if chat_id is None:
+            logging.critical("No valid chat ID available. Aborting response generation.")
+            return "No valid chat ID available. Aborting response generation."
+        
+        chat = await client.chat.fetch_chat(chat_id)
+        chat_restart = False
+
+        # Use the greeting message from the new chat if available.
+        if greeting_obj is not None and data["Options"].get("send_the_greeting_message", True):
+            greeting_message = greeting_obj.get_primary_candidate().text
+            logging.debug("Character greeting message: %s", greeting_message)
+            for pattern in data.get("MessageFormatting", {}).get("remove_IA_text_from", []):
+                greeting_message = re.sub(pattern, '', greeting_message, flags=re.MULTILINE).strip()
+    except Exception as e:
+        logging.critical("Error during chat session initialization: %s", e)
+        return
+
+    if data["Options"].get("send_the_system_message_reply", True) and data["CAI"].get("system_message", None) is not None:
+        try:
+            system_reply_obj = await client.chat.send_message(
+                data["CAI"]["character_id"], chat.chat_id, data["CAI"]["system_message"]
+            )
+            system_msg_reply = system_reply_obj.get_primary_candidate().text
+            logging.debug("Character response to system prompt: %s", system_msg_reply)
+            for pattern in data.get("MessageFormatting", {}).get("remove_IA_text_from", []):
+                system_msg_reply = re.sub(pattern, '', system_msg_reply, flags=re.MULTILINE).strip()
+        except Exception as e:
+            logging.error("Error sending system message: %s", e)
+    
+    return greeting_message, system_msg_reply
 
 async def cai_response(cache_file):
     """
@@ -100,6 +151,7 @@ async def cai_response(cache_file):
         Attempts to generate a response from the AI using cached messages.
         Retries up to MAX_TRIES times.
         """
+        nonlocal client  # use client from outer scope
         global answer, AI_response
 
         logging.info("Attempting to generate a C.AI response...")
@@ -111,7 +163,7 @@ async def cai_response(cache_file):
 
         for attempt in range(MAX_TRIES):
             if not cache_file:
-                logging.debug("No outstanding messages in cache (%s). Stopping generation attempt.", data["Discord"].get("messages_cache"))
+                logging.debug("No outstanding messages in cache. Stopping generation attempt.")
                 break
 
             try:
@@ -128,7 +180,7 @@ async def cai_response(cache_file):
 
             except asyncio.exceptions.TimeoutError:
                 logging.debug("Timeout on attempt %d. Retrying...", attempt + 1)
-                cache_file.pop()  # Remove the oldest message and try again
+                cache_file.pop(0)  # Remove the oldest message and try again
             except exceptions.SessionClosedError:
                 logging.debug("Session closed error on attempt %d. Retrying...", attempt + 1)
                 # Optionally remove a message or take other corrective action.
@@ -145,13 +197,12 @@ async def cai_response(cache_file):
         utils.write_json(data["Discord"]["messages_cache"], [])
     
     try:
-        # Get the client and ensure that we have a valid chat ID.
         client = await get_client(token=data["CAI"]["token"])
-        chat_id = await new_chat_id(chat_restart)
+        chat_id = data["CAI"]["chat_id"]
         if chat_id is None:
             logging.critical("No valid chat ID available. Aborting response generation.")
             return AI_response
-        chat = await client.chat.fetch_chat(chat_id)
+        # chat = await client.chat.fetch_chat(chat_id)
         chat_restart = False
     except Exception as e:
         logging.critical("Error during chat session initialization: %s", e)
