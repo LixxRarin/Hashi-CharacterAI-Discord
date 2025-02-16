@@ -7,17 +7,7 @@ import cai
 import aiohttp
 import logging
 
-# Configure logging: both file and console with clear formatting.
-logging.basicConfig(
-    level=logging.DEBUG,
-    filename="app.log",
-    format='[%(filename)s] %(levelname)s : %(message)s',
-    encoding="utf-8"
-)
-console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.DEBUG)  # Set console log level
-console_handler.setFormatter(logging.Formatter('[%(filename)s] %(levelname)s : %(message)s'))
-#logging.getLogger().addHandler(console_handler)
+# Logging configuration
 
 # Load configuration from the YAML file.
 try:

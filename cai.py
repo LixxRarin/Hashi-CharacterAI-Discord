@@ -5,18 +5,7 @@ from PyCharacterAI import get_client, exceptions, types
 from ruamel.yaml import YAML
 import logging
 
-# Configure logging for both file and console output.
-logging.basicConfig(
-    level=logging.DEBUG,
-    filename="app.log",
-    format='[%(filename)s] %(levelname)s : %(message)s',
-    encoding="utf-8"
-)
-console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.DEBUG)  # Set console log level
-console_handler.setFormatter(logging.Formatter('[%(filename)s] %(levelname)s : %(message)s'))
-# Uncomment the next line to add console logging if needed:
-# logging.getLogger().addHandler(console_handler)
+logger = logging.getLogger(__name__)
 
 # Initialize ruamel.yaml with desired settings.
 yaml = YAML()

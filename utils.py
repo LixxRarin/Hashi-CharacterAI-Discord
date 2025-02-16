@@ -6,17 +6,7 @@ import datetime
 import yaml
 import logging
 
-# Configure logging: log both to file and console.
-logging.basicConfig(
-    level=logging.DEBUG,
-    filename="app.log",
-    format='[%(filename)s] %(levelname)s : %(message)s',
-    encoding="utf-8"
-)
-console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.DEBUG)  # Set console log level
-console_handler.setFormatter(logging.Formatter('[%(filename)s] %(levelname)s : %(message)s'))
-#logging.getLogger().addHandler(console_handler)
+logger = logging.getLogger(__name__)
 
 # Load configuration from the YAML file.
 try:

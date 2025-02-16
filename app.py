@@ -1,7 +1,4 @@
 # app.py
-import boot
-import AI_utils
-from cai import initialize_messages
 import discord
 import asyncio
 import logging
@@ -10,7 +7,7 @@ import yaml
 from discord.ext import commands
 from colorama import init, Fore
 
-# Initialize colorama for cross-platform color support
+# Initialize colorama for colored logs
 init(autoreset=True)
 
 # Define colors for different log levels
@@ -23,7 +20,7 @@ LOG_COLORS = {
 }
 
 class ColoredFormatter(logging.Formatter):
-    """Custom formatter to add colors to log messages based on severity level"""
+    """Custom formatter to add colors to log messages based on severity level."""
     def format(self, record):
         log_color = LOG_COLORS.get(record.levelname, Fore.WHITE)  # Default to white
         return f"{log_color}[{record.filename}] {record.levelname} : {Fore.RESET}{record.message}"
@@ -32,18 +29,32 @@ class ColoredFormatter(logging.Formatter):
 if platform.system() == "Windows":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-# Configure logging for file output
+# Configure the root logger (before importing other modules)
 logging.basicConfig(
-    level=logging.DEBUG,
-    filename="app.log",
+    level=logging.DEBUG,  # Set global logging level
+    filename="app.log",   # Log to file
     format="[%(filename)s] %(levelname)s : %(message)s",
     encoding="utf-8",
 )
 
-# Configure console logging with colors
+# Create a console handler with colors
 console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.DEBUG)  # Set console log level
-console_handler.setFormatter(ColoredFormatter())  # Apply color formatting
+console_handler.setLevel(logging.DEBUG)  # Log everything to console
+console_handler.setFormatter(ColoredFormatter())
+
+# Get the root logger and add the console handler
+root_logger = logging.getLogger()
+root_logger.addHandler(console_handler)
+
+# Ensure the root logger doesn't duplicate handlers
+if not root_logger.hasHandlers():
+    root_logger.addHandler(console_handler)
+
+import boot
+import AI_utils
+from cai import initialize_messages
+
+boot.boot() 
 
 # Set up Discord intents
 intents = discord.Intents.default()
@@ -62,7 +73,7 @@ class BridgeBot(commands.Bot):
 
     async def setup_hook(self):
         """Initial async setup"""
-        await self.load_extension('commands')  # Load slash commands
+        await self.load_extension('slash_commands')  # Load slash commands
         await AI.sync_config(self)  # Sync AI configurations
 
     async def on_ready(self):

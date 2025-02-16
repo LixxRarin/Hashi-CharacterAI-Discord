@@ -13,20 +13,11 @@ from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap
 from io import BytesIO
 
-# Logging configuration
-logging.basicConfig(
-    level=logging.DEBUG,
-    filename="app.log",
-    format='[%(filename)s] %(levelname)s : %(message)s',
-    encoding="utf-8"
-)
-console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.DEBUG)
-console_handler.setFormatter(logging.Formatter('[%(filename)s] %(levelname)s : %(message)s'))
+logger = logging.getLogger(__name__)
 
 try:
     with open("version.txt", "x") as file:
-        file.write("1.0.4\n")
+        file.write("1.0.5\n")
 except FileExistsError:
     pass
 
@@ -378,6 +369,8 @@ class AutoUpdater:
             return None
 
     def _update_exe(self, release_data):
+        logging.info("New update found, downloading...")
+
         new_version = release_data.get('tag_name', self.current_version)
         # Try to find an .exe asset first
         asset = next((a for a in release_data.get('assets', []) if a.get('name', '').endswith('.exe')), None)
@@ -418,6 +411,7 @@ class AutoUpdater:
         Saves the new executable content to a temporary file and creates an update batch script
         that replaces the current executable with the new one and updates version.txt.
         """
+        logging.info("Switching to the latest executable file...")
         temp_exe = self.exe_path.parent / "Bridge_new.exe"
         try:
             with open(temp_exe, "wb") as f:
@@ -494,7 +488,7 @@ def startup_screen():
     print(banner)
     time.sleep(2)
 
-def main():
+def boot():
     startup_screen()
 
     # Manage and update the configuration file
@@ -518,5 +512,3 @@ def main():
 
     if config_data["Options"].get("auto_update", False):
         updater.check_and_update()
-
-main()

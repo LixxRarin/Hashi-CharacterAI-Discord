@@ -5,15 +5,7 @@ import time
 from cai import get_bot_info
 import logging
 
-logging.basicConfig(
-    level=logging.DEBUG,
-    filename="app.log",
-    format='[%(filename)s] %(levelname)s : %(message)s',
-    encoding="utf-8"
-)
-console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.DEBUG)  # Set console log level
-console_handler.setFormatter(logging.Formatter('[%(filename)s] %(levelname)s : %(message)s'))
+logger = logging.getLogger(__name__)
 
 class SlashCommands(commands.Cog):
     def __init__(self, bot):
