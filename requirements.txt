@@ -6,3 +6,4 @@ pyyaml
 colorama
 requests
 packaging
+selfupdate
