@@ -1,11 +1,12 @@
-import discord
-from discord.ext import commands
-from discord import app_commands
 import time
-from cai import get_bot_info
-import logging
 
-logger = logging.getLogger(__name__)
+import discord
+from discord import app_commands
+from discord.ext import commands
+
+import utils
+from cai import get_bot_info
+
 
 class SlashCommands(commands.Cog):
     def __init__(self, bot):
@@ -21,15 +22,17 @@ class SlashCommands(commands.Cog):
         try:
             bot_data = await get_bot_info()  # Fetch bot info
         except Exception as e:
-            logging.error(f"Failed to retrieve bot info: {e}")
+            utils.log.error(f"Failed to retrieve bot info: {e}")
             await interaction.followup.send("❌ **Error:** Unable to retrieve bot information. Please try again later.")
             return
 
         # Extract relevant details
         name = bot_data.get("name", "Unknown Bot")
-        avatar_url = bot_data.get("avatar_url", None)  # Fix: Use None instead of discord.Embed.Empty
+        # Fix: Use None instead of discord.Embed.Empty
+        avatar_url = bot_data.get("avatar_url", None)
         title = bot_data.get("title", "No title available.")
-        description = bot_data.get("description", "No description provided.").replace("\n", " ")
+        description = bot_data.get(
+            "description", "No description provided.").replace("\n", " ")
         visibility = bot_data.get("visibility", "Unknown")
         interactions = bot_data.get("num_interactions", 0)
         author = bot_data.get("author_username", "Unknown Author")
@@ -44,10 +47,14 @@ class SlashCommands(commands.Cog):
             embed.set_thumbnail(url=avatar_url)
 
         embed.add_field(name="👤 Creator:", value=author, inline=True)
-        embed.add_field(name="🔄 Total Interactions:", value=f"{interactions:,}", inline=True)
-        embed.add_field(name="🌎 Visibility:", value=visibility.capitalize(), inline=True)
-        embed.set_footer(text="Character.AI bots are available on Discord thanks to Bridge. :3")  
-        embed.add_field(name="🔗 Learn More about Bridge", value="[GitHub Repository](https://github.com/LixxRarin/CharacterAI-Discord-Bridge)", inline=False)
+        embed.add_field(name="🔄 Total Interactions:",
+                        value=f"{interactions:,}", inline=True)
+        embed.add_field(name="🌎 Visibility:",
+                        value=visibility.capitalize(), inline=True)
+        embed.set_footer(
+            text="Character.AI bots are available on Discord thanks to Bridge. :3")
+        embed.add_field(name="🔗 Learn More about Bridge",
+                        value="[GitHub Repository](https://github.com/LixxRarin/CharacterAI-Discord-Bridge)", inline=False)
 
         # Send the embed
         await interaction.followup.send(embed=embed)
@@ -76,14 +83,18 @@ class SlashCommands(commands.Cog):
         # Check for potential connection issues
         warnings = []
         if gateway_ping > 400:
-            warnings.append("High gateway latency! The bot may be slow to respond.")
+            warnings.append(
+                "High gateway latency! The bot may be slow to respond.")
         if api_ping > 700:
-            warnings.append("High API latency! Discord's response times may be delayed.")
+            warnings.append(
+                "High API latency! Discord's response times may be delayed.")
         if gateway_ping > 500 and api_ping > 800:
-            warnings.append("**Severe connection issues detected!** Commands may be very slow.")
+            warnings.append(
+                "**Severe connection issues detected!** Commands may be very slow.")
 
         # Format warning message (if any issues exist)
-        warning_message = "\n".join(warnings) if warnings else "No connection issues detected."
+        warning_message = "\n".join(
+            warnings) if warnings else "No connection issues detected."
 
         # Build the final message
         message = (
@@ -96,6 +107,7 @@ class SlashCommands(commands.Cog):
 
         # Edit the initial response with the final message
         await interaction.edit_original_response(content=message)
+
 
 async def setup(bot):
     await bot.add_cog(SlashCommands(bot))
