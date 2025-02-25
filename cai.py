@@ -1,4 +1,5 @@
 import asyncio
+import json
 import re
 
 from PyCharacterAI import exceptions, get_client, types
@@ -49,33 +50,40 @@ async def get_bot_info():
 async def new_chat_id(create):
     """
     Creates a new chat session if required, or returns the existing chat ID.
-    Updates the configuration file if a new chat session is created.
+    Searches for an existing chat in "cache.json" instead of modifying "config.yml".
     Returns a tuple: (chat_id, greeting_message_obj).
     If no new chat is created, greeting_message_obj will be None.
     """
-    if create or (utils.config_yaml["Character_AI"].get("chat_id", None) == None):
-        try:
+    try:
+        # Load cache data from "cache.json"
+        cache_data = utils.read_json("cache.json")
+
+        chat_id = cache_data.get("chat_id")
+
+        if create or chat_id is None:
             client = await get_client(token=utils.config_yaml["Character_AI"]["token"])
             chat, greeting_message_obj = await client.chat.create_chat(utils.config_yaml["Character_AI"]["character_id"])
             utils.log.debug("New Chat ID created: %s", chat.chat_id)
 
-            # Update the chat_id in configuration data and write back to the config file.
-            utils.config_yaml["Character_AI"]["chat_id"] = chat.chat_id
+            # Update cache.json with new chat_id
+            cache_data["chat_id"] = chat.chat_id
+            cache_data["setup"] = False
 
             try:
-                with open("config.yml", "w", encoding="utf-8") as file:
-                    yaml.dump(utils.config_yaml, file)
-                utils.log.info("Configuration file updated with new Chat ID.")
+                with open("cache.json", "w", encoding="utf-8") as file:
+                    json.dump(cache_data, file, indent=4)
+                utils.log.info("Cache file updated with new Chat ID.")
             except Exception as e:
                 utils.log.error(
-                    "Failed to update configuration file with new Chat ID: %s", e)
+                    "Failed to update cache file with new Chat ID: %s", e)
 
             return chat.chat_id, greeting_message_obj
-        except Exception as e:
-            utils.log.error("Error creating new chat session: %s", e)
-            return None, None
-    else:
-        return utils.config_yaml["Character_AI"]["chat_id"], None
+        else:
+            return chat_id, None
+
+    except Exception as e:
+        utils.log.error("Error handling chat session: %s", e)
+        return None, None
 
 
 async def initialize_messages():
@@ -89,42 +97,53 @@ async def initialize_messages():
     greeting_message = None
     system_msg_reply = None
 
-    try:
-        # Get the client and ensure that we have a valid chat ID.
-        client = await get_client(token=utils.config_yaml["Character_AI"]["token"])
-        chat_id, greeting_obj = await new_chat_id(chat_restart)
-        if chat_id is None:
-            utils.log.critical(
-                "No valid chat ID available. Aborting response generation.")
-            return "No valid chat ID available. Aborting response generation."
+    cache_data = utils.read_json("cache.json")
 
-        chat = await client.chat.fetch_chat(chat_id)
-        chat_restart = False
-
-        # Use the greeting message from the new chat if available.
-        if greeting_obj is not None and utils.config_yaml["Options"].get("send_the_greeting_message"):
-            greeting_message = greeting_obj.get_primary_candidate().text
-            utils.log.debug("Character greeting message: %s", greeting_message)
-            for pattern in utils.config_yaml.get("MessageFormatting", {}).get("remove_IA_text_from", []):
-                greeting_message = re.sub(
-                    pattern, '', greeting_message, flags=re.MULTILINE).strip()
-    except Exception as e:
-        utils.log.critical("Error during chat session initialization: %s", e)
-        return
-
-    if utils.config_yaml["Options"].get("send_the_system_message_reply", True) and utils.config_yaml["Character_AI"].get("system_message", None) is not None:
+    if not cache_data.get("setup", False):
         try:
-            system_reply_obj = await client.chat.send_message(
-                utils.config_yaml["Character_AI"]["character_id"], chat.chat_id, utils.config_yaml["Character_AI"]["system_message"]
-            )
-            system_msg_reply = system_reply_obj.get_primary_candidate().text
-            utils.log.debug(
-                "Character response to system prompt: %s", system_msg_reply)
-            for pattern in utils.config_yaml.get("MessageFormatting", {}).get("remove_IA_text_from", []):
-                system_msg_reply = re.sub(
-                    pattern, '', system_msg_reply, flags=re.MULTILINE).strip()
+            # Get the client and ensure that we have a valid chat ID.
+            client = await get_client(token=utils.config_yaml["Character_AI"]["token"])
+            chat_id, greeting_obj = await new_chat_id(chat_restart)
+            if chat_id is None:
+                utils.log.critical(
+                    "No valid chat ID available. Aborting response generation.")
+                return "No valid chat ID available. Aborting response generation."
+
+            chat = await client.chat.fetch_chat(chat_id)
+            chat_restart = False
+
+            # Use the greeting message from the new chat if available.
+            if greeting_obj is not None and utils.config_yaml["Options"].get("send_the_greeting_message"):
+                greeting_message = greeting_obj.get_primary_candidate().text
+                utils.log.debug(
+                    "Character greeting message: %s", greeting_message)
+                for pattern in utils.config_yaml.get("MessageFormatting", {}).get("remove_IA_text_from", []):
+                    greeting_message = re.sub(
+                        pattern, '', greeting_message, flags=re.MULTILINE).strip()
         except Exception as e:
-            utils.log.error("Error sending system message: %s", e)
+            utils.log.critical(
+                "Error during chat session initialization: %s", e)
+            return
+
+        if utils.config_yaml["Options"].get("send_the_system_message_reply", True) and utils.config_yaml["Character_AI"].get("system_message", None) is not None:
+            try:
+                cache_data = utils.read_json("cache.json")
+
+                system_reply_obj = await client.chat.send_message(
+                    utils.config_yaml["Character_AI"]["character_id"], chat.chat_id, utils.config_yaml["Character_AI"]["system_message"]
+                )
+                system_msg_reply = system_reply_obj.get_primary_candidate().text
+                utils.log.debug(
+                    "Character response to system prompt: %s", system_msg_reply)
+                for pattern in utils.config_yaml.get("MessageFormatting", {}).get("remove_IA_text_from", []):
+                    system_msg_reply = re.sub(
+                        pattern, '', system_msg_reply, flags=re.MULTILINE).strip()
+
+            except Exception as e:
+                utils.log.error("Error sending system message: %s", e)
+
+    cache_data["setup"] = True
+    utils.write_json("cache.json", cache_data)
 
     return greeting_message, system_msg_reply
 
