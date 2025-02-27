@@ -1,7 +1,8 @@
-# Bridge Files
+# Bridget Files
 config.yml
 messages_cache.json
 cache.json
+session.json
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

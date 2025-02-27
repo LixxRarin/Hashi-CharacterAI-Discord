@@ -37,7 +37,8 @@ class BridgeBot(commands.Bot):
 
     async def setup_hook(self):
         """Initial async setup"""
-        await self.load_extension('slash_commands')  # Load slash commands
+        await self.load_extension('slash_commands')
+        await self.load_extension('webhook')  # Load slash commands
         await AI.sync_config(self)  # Sync AI configurations
 
     async def on_ready(self):

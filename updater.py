@@ -209,7 +209,7 @@ def return_version():
 def startup_screen():
     os.system("cls" if os.name == "nt" else "clear")
     banner = f"""
-{Fore.CYAN}{Style.BRIGHT}{Fore.WHITE}------- Bridge -------
+{Fore.CYAN}{Style.BRIGHT}{Fore.WHITE}------- C.AI to Discord ~ Bridge -------
 {Fore.YELLOW}Description: {Fore.WHITE}An AI-powered Discord bot using Character.AI! :3
 {Fore.YELLOW}Creator: {Fore.WHITE}LixxRarin
 {Fore.YELLOW}GitHub: {Fore.WHITE}https://github.com/LixxRarin/CharacterAI-Discord-Bridge

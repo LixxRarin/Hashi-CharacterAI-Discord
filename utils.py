@@ -150,13 +150,22 @@ def test_internet():
 
 def capture_message(cache_file, message_info, reply_message=None):
     """
-    Captures a message from a specified channel and saves it in the cache file.
-    It applies formatting based on the configuration and supports both normal and reply messages.
+    Captures a message from a specified channel and stores it in a structured cache file.
     """
-    # Read existing cache data
+    # Read existing cache data and convert legacy list format to dict if necessary.
     dados = read_json(cache_file)
-    if dados is None:
-        dados = []
+    if dados is None or not isinstance(dados, dict):
+        dados = {}
+
+    # Extract server_id and channel_id from message_info
+    server_id = str(message_info.guild.id)
+    channel_id = str(message_info.channel.id)
+
+    # Ensure server and channel keys exist
+    if server_id not in dados:
+        dados[server_id] = {}
+    if channel_id not in dados[server_id]:
+        dados[server_id][channel_id] = {}
 
     # Retrieve format templates from configuration
     template_syntax = config_yaml.get("MessageFormatting", {}).get(
@@ -164,71 +173,99 @@ def capture_message(cache_file, message_info, reply_message=None):
     reply_template_syntax = config_yaml.get("MessageFormatting", {}).get(
         "user_reply_format_syntax", "{message}")
 
-    # Remove user emojis (if true)
+    # Process message content and author name based on emoji removal configuration
     if config_yaml["MessageFormatting"]["remove_emojis"]["user"]:
-        message_info["message"] = remove_emoji(message_info["message"])
-        message_info["name"] = remove_emoji(message_info["name"])
-
-        if reply_message is not None:
-            reply_message["message"] = remove_emoji(reply_message["message"])
-            reply_message["name"] = remove_emoji(reply_message["name"])
+        msg_text = remove_emoji(message_info.content)
+        msg_name = remove_emoji(
+            message_info.author.global_name or message_info.author.name)
+    else:
+        msg_text = message_info.content
+        msg_name = message_info.author.global_name or message_info.author.name
 
     # Prepare data for formatting
     syntax = {
         "time": datetime.datetime.now().strftime("%H:%M"),
-        "username": message_info.get("username", ""),
-        "name": message_info.get("name", ""),
-        "message": message_info.get("message", ""),
+        "username": message_info.author.name,
+        "name": msg_name,
+        "message": msg_text,
     }
 
-    # Remove unwanted text patterns from the message using regex patterns from config.
+    # Remove unwanted text patterns from message content
     for pattern in config_yaml.get("MessageFormatting", {}).get("remove_user_text_from", []):
         syntax["message"] = re.sub(
             pattern, '', syntax["message"], flags=re.MULTILINE).strip()
 
-    # Process reply message if provided.
+    # Process reply message if provided
     if reply_message:
+        if config_yaml["MessageFormatting"]["remove_emojis"]["user"]:
+            reply_text = remove_emoji(reply_message.content)
+            reply_name = remove_emoji(
+                reply_message.author.global_name or reply_message.author.name)
+        else:
+            reply_text = reply_message.content
+            reply_name = reply_message.author.global_name or reply_message.author.name
+
         syntax.update({
-            "reply_username": reply_message.get("username", ""),
-            "reply_name": reply_message.get("name", ""),
-            "reply_message": reply_message.get("message", ""),
+            "reply_username": reply_message.author.name,
+            "reply_name": reply_name,
+            "reply_message": reply_text,
         })
-        # Clean reply message text using same patterns.
         for pattern in config_yaml.get("MessageFormatting", {}).get("remove_user_text_from", []):
             syntax["reply_message"] = re.sub(
                 pattern, '', syntax["reply_message"], flags=re.MULTILINE).strip()
 
-    # Attempt to format and store the message.
+    # Group messages if the last one was from the same user
     try:
-        if reply_message is None and not message_info["message"] in [None, ""]:
-            msg = template_syntax.format(**syntax)
-            dados.append({"Message": msg})
-            logging.debug("Captured new message: %s", msg)
+        channel_data = dados[server_id][channel_id]
+        last_key = list(channel_data.keys())[-1] if channel_data else None
+        last_message = channel_data.get(last_key, "")
+
+        if reply_message is None and msg_text not in [None, ""]:
+            formatted_message = template_syntax.format(**syntax)
+            # Se a última mensagem é do mesmo usuário (verificado pelo final do texto), agrupa a mensagem.
+            if last_key and "Message" in last_key and last_message.endswith(syntax["name"]):
+                dados[server_id][channel_id][last_key] += f"\n{formatted_message}"
+            else:
+                new_key = f"Message{len(channel_data) + 1}"
+                dados[server_id][channel_id][new_key] = formatted_message
+            logging.debug("Captured new message: %s", formatted_message)
+
         elif reply_message is not None:
-            # Format as a reply
-            # formatted_message = template_syntax.format(**syntax)
             formatted_reply = reply_template_syntax.format(**syntax)
-            dados.append({"Reply": formatted_reply})
-            log.debug("Captured reply message: %s", formatted_reply)
+            dados[server_id][channel_id]["Reply"] = formatted_reply
+            logging.debug("Captured reply message: %s", formatted_reply)
 
         write_json(cache_file, dados)
     except Exception as e:
-        log.error("Error while saving message to cache: %s", e)
+        logging.error("Error while saving message to cache: %s", e)
 
 
-def format_to_send(cache_data):
+def format_to_send(cache_data, server_id, channel_id):
     """
-    Aggregates cached messages into a single string separated by newline characters.
+    Aggregates cached messages from a specific channel in a specific server into a single string separated by newline characters.
+
+    Parameters:
+        cache_data (dict): Dicionário com os dados de cache.
+        server_id (str): ID do servidor.
+        channel_id (str): ID do canal.
+
+    Returns:
+        str: Mensagens combinadas do canal especificado.
     """
     formatted_messages = []
-    for entry in cache_data:
-        if isinstance(entry, dict):
-            if "Message" in entry:
-                formatted_messages.append(entry["Message"])
-            elif "Reply" in entry:
-                formatted_messages.append(entry["Reply"])
+    try:
+        channel_data = cache_data[str(server_id)][str(channel_id)]
+        for key, text in channel_data.items():
+            if isinstance(text, str):
+                formatted_messages.append(text)
+    except KeyError:
+        logging.error(
+            "No cache data found for server_id: %s and channel_id: %s", server_id, channel_id)
+        return ""
+
     combined_message = "\n".join(formatted_messages)
-    logging.debug("Formatted message to send: %s", combined_message)
+    logging.debug("Formatted message to send for server %s, channel %s: %s",
+                  server_id, channel_id, combined_message)
     return combined_message
 
 

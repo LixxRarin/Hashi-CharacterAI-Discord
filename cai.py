@@ -20,18 +20,17 @@ answer = ""
 AI_response = ""
 
 
-async def get_bot_info():
+async def get_bot_info(token=utils.config_yaml["Character_AI"]["token"], character_id=utils.config_yaml["Character_AI"]["character_id"]):
     """
     Retrieves the bot's information (name and avatar URL) from the Character.AI service.
     """
     try:
-        client = await get_client(token=utils.config_yaml["Character_AI"]["token"])
-        character = await client.character.fetch_character_info(utils.config_yaml["Character_AI"]["character_id"])
+        client = await get_client(token)
+        character = await client.character.fetch_character_info(character_id)
     except Exception as e:
         utils.log.critical(
             "Unable to get character information from C.AI: %s", e)
-        input("Press Enter to exit...")
-        exit()
+        return None
 
     # Extract name and avatar URL from the character info.
     char_dict = types.character.Character.get_dict(character)
@@ -148,7 +147,7 @@ async def initialize_messages():
     return greeting_message, system_msg_reply
 
 
-async def cai_response(cache_file):
+async def cai_response(cache_file, message):
     """
     Generates a response from Character.AI based on the cached messages.
     Retries for a number of attempts defined in the configuration and cleans the cache upon failure.
@@ -164,7 +163,8 @@ async def cai_response(cache_file):
         global answer, AI_response
 
         utils.log.info("Attempting to generate a C.AI response...")
-        formatted_data = utils.format_to_send(cache_file)
+        formatted_data = utils.format_to_send(
+            cache_file, message.guild.id, message.channel.id)
 
         MAX_TRIES = utils.config_yaml["Options"].get(
             "max_response_attempts", 1)

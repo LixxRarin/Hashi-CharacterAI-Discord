@@ -12,17 +12,13 @@ yaml.preserve_quotes = True
 yaml.encoding = "utf-8"
 
 # Default configuration content
-DEFAULT_CONFIG_CONTENT = r"""version: "1.1.0" # Don't touch here
+DEFAULT_CONFIG_CONTENT = r"""version: "1.1.1" # Don't touch here
 
 # Discord Bot Configuration
 Discord:
   token: "YOUR_DISCORD_BOT_TOKEN"
   # This is the token used to authenticate your bot with Discord.
   # Keep this token secure and do not share it publicly.
-
-  channel_bot_chat: [12345678]  # The ID of the channel where the bot responds.
-  # Use the Discord channel ID where you want the bot to send messages.
-  # The bot will listen and send messages to this channel.
 
   use_cai_avatar: true  # Whether to use the Character.AI profile picture for the bot.
   # If set to true, the bot will display the avatar from Character.AI.
@@ -45,7 +41,7 @@ Character_AI:
   # This is the unique identifier for the character you want the bot to use.
   # The default ID is from Neuro-Sama
 
-  chat_id: "79c6b54e-717f-4fc2-97bd-57620baa4b47"
+  chat_id: null
   # This is the ID of the specific chat session you want the bot to join.
   # It allows the bot to maintain continuity in its interactions with users.
   # Use “null” if you don't have a chat ID, the program will automatically fill "cache.json" in a new ID.
@@ -68,9 +64,12 @@ Character_AI:
 
 # Bot Interaction Settings
 Options:
+  webhook_mode: false
+  # This option is in beta.
+  
   auto_update: true # If true, the program will check for a new update every time it starts up
   #If true, the program will automatically search for an update
-  # For realases or commits, this depends on how you run Bridge
+  # For realases or commits, this depends on how you run Bridget
 
   repo_url: "git@github.com:LixxRarin/CharacterAI-Discord-Bridge.git" # Repository url
   # This is the repository where the program will check and update.
