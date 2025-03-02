@@ -1,51 +1,232 @@
 import time
 import json
 import os
+import asyncio
+from typing import Dict, Any, Optional, List
 
+import aiohttp
 import discord
 from discord import app_commands
 from discord.ext import commands
 
 import utils
 import cai
+from utils import update_session_data
 
-session_data = utils.read_json("session.json")
+# Global session data
+session_data: Dict[str, Any] = {}
 
 
 class WebHook(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.webhook_locks: Dict[str, asyncio.Lock] = {}
+
+    async def _fetch_avatar(self, url: str) -> Optional[bytes]:
+        """
+        Fetch avatar image from URL.
+
+        Args:
+            url: Avatar URL
+
+        Returns:
+            Optional[bytes]: Avatar image data or None if failed
+        """
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as response:
+                if response.status == 200:
+                    return await response.read()
+                return None
+
+    async def _create_webhook(self, interaction: discord.Interaction,
+                              channel: discord.TextChannel,
+                              character_info: Dict[str, Any]) -> Optional[str]:
+        """
+        Create a webhook in the specified channel.
+
+        Args:
+            interaction: Discord interaction
+            channel: Discord channel
+            character_info: Character information
+
+        Returns:
+            Optional[str]: Webhook URL or None if failed
+        """
+        if interaction.guild.me.guild_permissions.manage_webhooks:
+            try:
+                avatar_bytes = await self._fetch_avatar(character_info["avatar_url"])
+                if avatar_bytes is None:
+                    avatar_bytes = b""
+                webhook_obj = await channel.create_webhook(
+                    name=character_info["name"],
+                    avatar=avatar_bytes,
+                    reason=f"Webhook - {character_info['name']}"
+                )
+                utils.log.debug("Created webhook with URL: %s",
+                                webhook_obj.url)
+                return webhook_obj.url
+            except discord.Forbidden:
+                await interaction.response.send_message(
+                    "I do not have permission to create webhooks in this channel.",
+                    ephemeral=True
+                )
+                return None
+            except discord.HTTPException as e:
+                await interaction.response.send_message(
+                    f"An error occurred while creating the webhook: {e}",
+                    ephemeral=True
+                )
+                return None
+            except Exception as e:
+                await interaction.response.send_message(
+                    f"Error: {e}",
+                    ephemeral=True
+                )
+                return None
+        else:
+            await interaction.response.send_message(
+                "I do not have permission to manage webhooks in this server.",
+                ephemeral=True
+            )
+            return None
 
     @app_commands.command(name="setup", description="Configura uma IA para o servidor.")
     @app_commands.default_permissions(administrator=True)
-    @app_commands.describe(channel="Canal para a IA monitorar", character_id="ID do personagem")
+    @app_commands.describe(channel="Channel to monitor for the IA", character_id="Character ID")
     async def setup(self, interaction: discord.Interaction, channel: discord.TextChannel, character_id: str):
+        """
+        Setup command to configure an AI for a server channel.
 
+        Args:
+            interaction: Discord interaction
+            channel: Discord channel
+            character_id: Character.AI character ID
+        """
+        await interaction.response.defer(ephemeral=True)
+
+        # Get character info
         character_info = await cai.get_bot_info(character_id=character_id)
-        if character_info is not None:
-            # Atualizar/Adicionar configuração do servidor
-            server_id = str(interaction.guild.id)
-            session_data[server_id] = {
-                "server_name": interaction.guild.name,
-            }
-            session_data[server_id][channel.id] = {
+        if character_info is None:
+            await interaction.followup.send("Invalid character_id...", ephemeral=True)
+            return
+
+        server_id = str(interaction.guild.id)
+        channel_id_str = str(channel.id)
+
+        utils.log.info(
+            f"Setting up webhook for server {server_id}, channel {channel_id_str}")
+
+        # Get or create webhook lock for this channel
+        if channel_id_str not in self.webhook_locks:
+            self.webhook_locks[channel_id_str] = asyncio.Lock()
+
+        # Acquire lock to prevent concurrent webhook operations on the same channel
+        async with self.webhook_locks[channel_id_str]:
+            # Check if webhook already exists
+            session = utils.get_session_data(server_id, channel_id_str)
+
+            if session and "webhook_url" in session:
+                # Update existing webhook
+                WB_url = session["webhook_url"]
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        webhook_obj = discord.Webhook.from_url(
+                            WB_url, session=session)
+                        avatar_bytes = await self._fetch_avatar(character_info["avatar_url"])
+                        if avatar_bytes is None:
+                            avatar_bytes = b""
+                        await webhook_obj.edit(
+                            name=character_info["name"],
+                            avatar=avatar_bytes,
+                            reason=f"Updating Webhook - {character_info['name']}"
+                        )
+                    utils.log.info(
+                        f"Updated existing webhook for channel {channel_id_str}")
+                except Exception as e:
+                    utils.log.error(f"Failed to update webhook: {e}")
+                    # If update fails, create a new webhook
+                    WB_url = await self._create_webhook(interaction, channel, character_info)
+                    if WB_url is None:
+                        await interaction.followup.send("Failed to create webhook.", ephemeral=True)
+                        return
+            else:
+                # Create a new webhook
+                WB_url = await self._create_webhook(interaction, channel, character_info)
+                if WB_url is None:
+                    utils.log.error(
+                        f"Failed to create webhook for channel {channel_id_str}")
+                    return
+
+            # Update session data
+            new_session_data = {
                 "channel_name": channel.name,
                 "character_id": character_id,
+                "webhook_url": WB_url,
                 "chat_id": None,
-                "setup_has_already": False
+                "setup_has_already": False,
+                "last_message_time": time.time(),
+                "awaiting_response": False
             }
+            await update_session_data(server_id, channel_id_str, new_session_data)
 
-            # Salvar no arquivo JSON
-            utils.write_json("session.json", session_data)
+            # Initialize session messages
+            greetings, reply_system = await cai.initialize_session_messages(new_session_data, server_id, channel_id_str)
 
-            await interaction.response.send_message(
-                f"Configurado com sucesso!\nCanal: {channel.mention}, Character ID: `{character_id}`.\nAI name: {character_info["name"]}",
+            # Update session data with new chat_id
+            session = utils.get_session_data(server_id, channel_id_str)
+            if session:
+                session["setup_has_already"] = True
+                await update_session_data(server_id, channel_id_str, session)
+
+            # Send greeting and system messages
+            if greetings:
+                try:
+                    await webhook_send(WB_url, greetings)
+                    utils.log.info(
+                        "Greeting message sent via webhook for channel %s", channel_id_str)
+                except Exception as e:
+                    utils.log.error(
+                        "Error sending greeting via webhook for channel %s: %s", channel_id_str, e)
+
+            if reply_system:
+                try:
+                    await webhook_send(WB_url, reply_system)
+                    utils.log.info(
+                        "System message sent via webhook for channel %s", channel_id_str)
+                except Exception as e:
+                    utils.log.error(
+                        "Error sending system message via webhook for channel %s: %s", channel_id_str, e)
+
+            await interaction.followup.send(
+                f"Configuration successful!\nChannel: {channel.mention}\nCharacter ID: `{character_id}`.\nAI name: {character_info['name']}\nWebhook: {WB_url}",
                 ephemeral=True
             )
 
-        else:
-            await interaction.response.send_message(f"Seu character_id é invalido...", ephemeral=True)
+
+async def load_session_data():
+    """Load session data from session.json"""
+    global session_data
+    session_data = await asyncio.to_thread(utils.read_json, "session.json") or {}
+    utils.log.info(
+        f"Loaded webhook session data with {len(session_data)} servers")
+
+
+async def webhook_send(url: str, message: str) -> None:
+    """
+    Send a message via webhook.
+
+    Args:
+        url: Webhook URL
+        message: Message to send
+    """
+    async with aiohttp.ClientSession() as session:
+        webhook_obj = discord.Webhook.from_url(url, session=session)
+        await webhook_obj.send(message)
 
 
 async def setup(bot):
+    """Setup function for the webhook cog"""
     await bot.add_cog(WebHook(bot))
+
+    # Start the response queue processor
+    asyncio.create_task(cai.process_response_queue())

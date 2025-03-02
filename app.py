@@ -1,5 +1,7 @@
 import asyncio
 import platform
+import os
+from typing import Dict, Any, Optional, List
 
 import discord
 from colorama import init
@@ -8,7 +10,9 @@ from discord.ext import commands
 import updater
 import AI_utils
 import utils
-from cai import initialize_messages
+from cai import initialize_session_messages
+import webhook  # Import webhook to access session_data and webhook_send
+from utils import load_session_cache, process_session_updates
 
 # Initialize colorama for colored logs
 init(autoreset=True)
@@ -16,7 +20,6 @@ init(autoreset=True)
 # For Windows compatibility with asyncio
 if platform.system() == "Windows":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-
 
 # Set up Discord intents
 intents = discord.Intents.default()
@@ -37,9 +40,42 @@ class BridgeBot(commands.Bot):
 
     async def setup_hook(self):
         """Initial async setup"""
-        await self.load_extension('slash_commands')
-        await self.load_extension('webhook')  # Load slash commands
-        await AI.sync_config(self)  # Sync AI configurations
+        # Load extensions
+        if os.path.exists("slash_commands.py"):
+            await self.load_extension('slash_commands')
+        await self.load_extension('webhook')
+
+        # Ensure session.json exists
+        if not os.path.exists("session.json"):
+            utils.write_json("session.json", {})
+
+        # Ensure messages_cache.json exists
+        if not os.path.exists("messages_cache.json"):
+            utils.write_json("messages_cache.json", {})
+
+        # Load session cache
+        await load_session_cache()
+
+        # Start session update processor
+        self.update_processor = asyncio.create_task(process_session_updates())
+
+        # Sync AI configurations for each webhook
+        await AI.sync_config(self)
+
+    async def close(self):
+        """Cleanup when bot is shutting down"""
+        # Cancel the update processor task
+        if hasattr(self, 'update_processor'):
+            self.update_processor.cancel()
+            try:
+                await self.update_processor
+            except asyncio.CancelledError:
+                pass
+
+        # Ensure all pending updates are processed
+        await utils.session_update_queue.join()
+
+        await super().close()
 
     async def on_ready(self):
         """Bot ready event handler"""
@@ -48,38 +84,69 @@ class BridgeBot(commands.Bot):
             self.synced = True
             utils.log.info("Logged in as %s!", self.user)
 
-            greetings, reply_system = await initialize_messages()
+            # Initialize all webhooks with their respective character configurations
+            await self._initialize_all_webhooks()
 
-            channel_id = utils.config_yaml["Discord"]["channel_bot_chat"][0]
-            channel = bot.get_channel(channel_id)
+    async def _initialize_all_webhooks(self):
+        """Initialize all webhooks with their respective character configurations"""
+        utils.log.info("Initializing all webhooks...")
 
-            if greetings is not None:
-                await channel.send(greetings)
-                utils.log.info("Greeting message sent")
-            if reply_system is not None:
-                await channel.send(reply_system)
-                utils.log.info("System message reply message sent")
+        # Iterate over all sessions (each webhook) in session.json
+        for server_id, server_data in webhook.session_data.items():
+            channels = server_data.get("channels", {})
+            for channel_id, session in channels.items():
+                # Skip if already set up
+                if session.get("setup_has_already", False):
+                    utils.log.debug(
+                        "Channel %s in server %s already set up, skipping initialization",
+                        channel_id, server_id
+                    )
+                    continue
+
+                # Get the channel object (if available)
+                channel = self.get_channel(int(channel_id))
+                if not channel:
+                    utils.log.error(
+                        "Channel with ID %s not found.", channel_id)
+                    continue
+
+                # Initialize session messages for this webhook using its own character_id
+                utils.log.info(
+                    "Initializing webhook for channel %s (character_id: %s)",
+                    channel_id, session.get("character_id")
+                )
+
+                greetings, reply_system = await initialize_session_messages(session, server_id, channel_id)
+
+                if not session.get("webhook_url"):
+                    utils.log.error(
+                        "No webhook URL found for channel %s in server %s", channel_id, server_id)
+                    continue
+
+                # Send greeting message if available
+                if greetings:
+                    try:
+                        await webhook.webhook_send(session["webhook_url"], greetings)
+                        utils.log.info(
+                            "Greeting message sent via webhook for channel %s", channel_id)
+                    except Exception as e:
+                        utils.log.error(
+                            "Error sending greeting via webhook for channel %s: %s", channel_id, e)
+
+                # Send system message if available
+                if reply_system:
+                    try:
+                        await webhook.webhook_send(session["webhook_url"], reply_system)
+                        utils.log.info(
+                            "System message sent via webhook for channel %s", channel_id)
+                    except Exception as e:
+                        utils.log.error(
+                            "Error sending system message via webhook for channel %s: %s", channel_id, e)
+        utils.log.info("Inicializado.")
 
 
 # Initialize the AI bot helper class from AI_utils
 AI = AI_utils.discord_AI_bot()
-
-
-# Ensure the messages cache file exists
-cache_path = utils.config_yaml.get("Discord", {}).get(
-    "messages_cache", "messages_cache.json")
-try:
-    with open(cache_path, "r", encoding="utf-8"):
-        utils.log.debug("Cache file '%s' verified", cache_path)
-except FileNotFoundError:
-    try:
-        with open(cache_path, "x", encoding="utf-8") as file:
-            file.write("[]")
-        utils.log.info("Created new cache file at '%s'", cache_path)
-    except Exception as e:
-        utils.log.critical(
-            "Failed to initialize cache file '%s': %s", cache_path, e)
-        exit()
 
 # Initialize bot instance
 bot = BridgeBot()
@@ -98,18 +165,29 @@ async def on_typing(channel, user, when):
 async def on_message(message):
     """Process incoming messages"""
     try:
-        asyncio.create_task(AI.read_channel_messages(message, bot))
-        asyncio.ensure_future(AI.monitor_inactivity(bot, message))
-        await bot.process_commands(message)  # Process traditional commands
+        # Skip messages from the bot itself
+        if message.author.id == bot.user.id:
+            return
+
+        # Process the message for AI response
+        await AI.read_channel_messages(message, bot)
+
+        # Start monitoring for inactivity
+        await AI.monitor_inactivity(bot, message)
+
+        # Process traditional commands
+        await bot.process_commands(message)
     except Exception as e:
         utils.log.error("Message processing error: %s", e)
 
+
 # Start the bot
-try:
-    bot.run(utils.config_yaml["Discord"]["token"])
-except discord.LoginFailure:
-    utils.log.critical("Invalid authentication token!")
-except Exception as e:
-    utils.log.critical("Fatal runtime error: %s", e)
-finally:
-    input("Press Enter to exit...")
+if __name__ == "__main__":
+    try:
+        bot.run(utils.config_yaml["Discord"]["token"])
+    except discord.LoginFailure:
+        utils.log.critical("Invalid authentication token!")
+    except Exception as e:
+        utils.log.critical("Fatal runtime error: %s", e)
+    finally:
+        input("Press Enter to exit...")

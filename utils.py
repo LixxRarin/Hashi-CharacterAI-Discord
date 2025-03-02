@@ -4,9 +4,17 @@ import json
 import logging
 import re
 import socket
+import threading
+from typing import Any, Dict, Optional, Callable, Awaitable, TypeVar, Union
 
 import yaml
+import aiohttp
 from colorama import Fore, init
+
+# Type definitions
+T = TypeVar('T')
+SessionData = Dict[str, Any]
+CacheData = Dict[str, Dict[str, Dict[str, str]]]
 
 
 class ColoredFormatter(logging.Formatter):
@@ -22,30 +30,39 @@ class ColoredFormatter(logging.Formatter):
         }
         log_color = LOG_COLORS.get(record.levelname, Fore.WHITE)
 
-        # Formata o timestamp usando a hora do registro
+        # Format timestamp using record time
         timestamp = datetime.datetime.fromtimestamp(
             record.created).strftime('%H:%M:%S')
         message = record.getMessage()
 
-        # Exibe: [HH:MM:SS] NÍVEL    [arquivo:linha] - mensagem
+        # Display: [HH:MM:SS] LEVEL    [file:line] - message
         return f"{log_color}[{timestamp}] {record.levelname:<8} [{record.filename}:{record.lineno}] {Fore.RESET}- {message}"
 
 
-def load_config():
+def load_config() -> Dict[str, Any]:
     """
     Loads configuration from the YAML file without using logging.
+
+    Returns:
+        Dict[str, Any]: Configuration data from config.yml
     """
     try:
         with open("config.yml", "r", encoding="utf-8") as file:
             data = yaml.safe_load(file)
-    except Exception as e:
+    except Exception:
         data = {}  # Return an empty dictionary on error
     return data
 
 
-def setup_logging(debug_mode=False):
+def setup_logging(debug_mode=False) -> logging.Logger:
     """
     Configures logging: sets up a file handler and a console handler with colors.
+
+    Args:
+        debug_mode (bool): Whether to enable debug logging to console
+
+    Returns:
+        logging.Logger: Configured root logger
     """
     # Initialize colorama with autoreset enabled
     init(autoreset=True)
@@ -77,7 +94,6 @@ def setup_logging(debug_mode=False):
     root_logger = logging.getLogger()
     root_logger.addHandler(console_handler)
 
-    # Debug mode does not require additional configuration here
     return root_logger
 
 
@@ -88,26 +104,43 @@ debug_mode = config_yaml.get("Options", {}).get("debug_mode", False)
 # Next, configure logging
 log = setup_logging(debug_mode)
 
+# Session management
+session_cache: Dict[str, Any] = {}
+session_update_queue = asyncio.Queue()
+session_lock = threading.Lock()
 
-async def timeout_async(func, timeout, on_timeout):
+
+async def timeout_async(func: Callable[[], Awaitable[T]], timeout: float,
+                        on_timeout: Callable[[], Awaitable[None]]) -> None:
     """
     Awaits the execution of 'func' with a specified timeout.
     If a timeout occurs, the 'on_timeout' function is called.
+
+    Args:
+        func: Async function to execute
+        timeout: Timeout in seconds
+        on_timeout: Async function to call if timeout occurs
     """
     try:
         await asyncio.wait_for(func(), timeout=timeout)
     except asyncio.TimeoutError:
-        logging.warning(
+        log.warning(
             "Operation timed out after %s seconds. Executing on_timeout handler.", timeout)
         try:
             await on_timeout()
         except Exception as e:
-            logging.error("Error in on_timeout handler: %s", e)
+            log.error("Error in on_timeout handler: %s", e)
 
 
-def remove_emoji(text):
+def remove_emoji(text: str) -> str:
     """
     Removes emoji characters from the given text, including Discord custom emojis.
+
+    Args:
+        text: Text to process
+
+    Returns:
+        str: Text with emojis removed
     """
     # Regex pattern for Unicode emojis
     emoji_pattern = re.compile(
@@ -134,10 +167,12 @@ def remove_emoji(text):
     return text.strip()
 
 
-def test_internet():
+def test_internet() -> bool:
     """
     Tests internet connectivity by attempting to connect to www.google.com.
-    Returns True if successful, otherwise False.
+
+    Returns:
+        bool: True if successful, otherwise False
     """
     try:
         socket.create_connection(("www.google.com", 80), timeout=5)
@@ -148,13 +183,22 @@ def test_internet():
         return False
 
 
-def capture_message(cache_file, message_info, reply_message=None):
+def capture_message(message_info, reply_message=None) -> None:
     """
-    Captures a message from a specified channel and stores it in a structured cache file.
+    Captures a message from a specified channel and stores it in the messages_cache.json file.
+    Prevents duplicate messages from being added to the cache.
+
+    Args:
+        message_info: Discord message object
+        reply_message: Optional reply message object
     """
-    # Read existing cache data and convert legacy list format to dict if necessary.
-    dados = read_json(cache_file)
-    if dados is None or not isinstance(dados, dict):
+    # Skip capturing if the message was sent by a webhook.
+    if getattr(message_info, "webhook_id", None):
+        return
+
+    # Read existing cache data
+    dados = read_json("messages_cache.json")
+    if dados is None:
         dados = {}
 
     # Extract server_id and channel_id from message_info
@@ -217,78 +261,206 @@ def capture_message(cache_file, message_info, reply_message=None):
     # Group messages if the last one was from the same user
     try:
         channel_data = dados[server_id][channel_id]
-        last_key = list(channel_data.keys())[-1] if channel_data else None
-        last_message = channel_data.get(last_key, "")
 
         if reply_message is None and msg_text not in [None, ""]:
             formatted_message = template_syntax.format(**syntax)
-            # Se a última mensagem é do mesmo usuário (verificado pelo final do texto), agrupa a mensagem.
-            if last_key and "Message" in last_key and last_message.endswith(syntax["name"]):
-                dados[server_id][channel_id][last_key] += f"\n{formatted_message}"
-            else:
-                new_key = f"Message{len(channel_data) + 1}"
-                dados[server_id][channel_id][new_key] = formatted_message
-            logging.debug("Captured new message: %s", formatted_message)
+
+            # Check if this exact message already exists in the cache
+            message_already_exists = False
+            for key, existing_message in channel_data.items():
+                if existing_message == formatted_message:
+                    message_already_exists = True
+                    log.debug(
+                        "Skipping duplicate message for channel %s", channel_id)
+                    break
+
+            if not message_already_exists:
+                last_key = list(channel_data.keys()
+                                )[-1] if channel_data else None
+                last_message = channel_data.get(last_key, "")
+
+                # If the last message is from the same user (checked via message ending), group the message.
+                if last_key and "Message" in last_key and last_message.endswith(syntax["name"]):
+                    dados[server_id][channel_id][last_key] += f"\n{formatted_message}"
+                else:
+                    new_key = f"Message{len(channel_data) + 1}"
+                    dados[server_id][channel_id][new_key] = formatted_message
+                log.debug("Captured new message for channel %s: %s",
+                          channel_id, formatted_message)
 
         elif reply_message is not None:
             formatted_reply = reply_template_syntax.format(**syntax)
-            dados[server_id][channel_id]["Reply"] = formatted_reply
-            logging.debug("Captured reply message: %s", formatted_reply)
+            # Check if this reply already exists
+            if "Reply" not in channel_data or channel_data["Reply"] != formatted_reply:
+                dados[server_id][channel_id]["Reply"] = formatted_reply
+                log.debug("Captured reply message for channel %s: %s",
+                          channel_id, formatted_reply)
 
-        write_json(cache_file, dados)
     except Exception as e:
-        logging.error("Error while saving message to cache: %s", e)
+        log.error(
+            "Error while saving message to cache for channel %s: %s", channel_id, e)
+
+    write_json("messages_cache.json", dados)
 
 
-def format_to_send(cache_data, server_id, channel_id):
+def format_to_send(cache_data: CacheData, server_id: str, channel_id: str) -> str:
     """
-    Aggregates cached messages from a specific channel in a specific server into a single string separated by newline characters.
+    Aggregates cached messages from a specific channel in a specific server into a single string.
 
-    Parameters:
-        cache_data (dict): Dicionário com os dados de cache.
-        server_id (str): ID do servidor.
-        channel_id (str): ID do canal.
+    Args:
+        cache_data: Dictionary containing cached data
+        server_id: Server ID
+        channel_id: Channel ID
 
     Returns:
-        str: Mensagens combinadas do canal especificado.
+        str: Combined messages from the specified channel
     """
     formatted_messages = []
     try:
-        channel_data = cache_data[str(server_id)][str(channel_id)]
+        server_data = cache_data.get(str(server_id))
+        if not server_data:
+            log.error("No cache data found for server_id: %s", server_id)
+            return ""
+
+        channel_data = server_data.get(str(channel_id))
+        if not channel_data:
+            log.error(
+                "No cache data found for channel_id: %s in server %s", channel_id, server_id)
+            return ""
+
         for key, text in channel_data.items():
             if isinstance(text, str):
                 formatted_messages.append(text)
-    except KeyError:
-        logging.error(
-            "No cache data found for server_id: %s and channel_id: %s", server_id, channel_id)
+
+    except Exception as e:
+        log.error("Error formatting cached messages: %s", e)
         return ""
 
     combined_message = "\n".join(formatted_messages)
-    logging.debug("Formatted message to send for server %s, channel %s: %s",
-                  server_id, channel_id, combined_message)
+    log.debug("Formatted message to send for server %s, channel %s: %s",
+              server_id, channel_id, combined_message[:100] + "..." if len(combined_message) > 100 else combined_message)
     return combined_message
 
 
-def read_json(file_path):
+def read_json(file_path: str) -> Optional[Dict[str, Any]]:
     """
     Reads and returns the content of a JSON file.
-    If an error occurs, logs the error and returns an empty list.
+
+    Args:
+        file_path: Path to the JSON file
+
+    Returns:
+        Optional[Dict[str, Any]]: JSON content or None if error
     """
-    try:
-        with open(file_path, 'r', encoding="utf-8") as file:
-            return json.load(file)
-    except Exception as e:
-        log.error("Error decoding JSON file '%s': %s", file_path, e)
-        return []  # Return an empty list on failure
+    with session_lock:
+        try:
+            with open(file_path, 'r', encoding="utf-8") as file:
+                return json.load(file)
+        except FileNotFoundError:
+            log.warning(
+                "JSON file '%s' not found. Creating new file.", file_path)
+            write_json(file_path, {})
+            return {}
+        except json.JSONDecodeError:
+            log.error(
+                "Error decoding JSON file '%s'. Creating new file.", file_path)
+            write_json(file_path, {})
+            return {}
+        except Exception as e:
+            log.error("Error reading JSON file '%s': %s", file_path, e)
+            return None
 
 
-def write_json(file_path, data):
+def write_json(file_path: str, data: Dict[str, Any]) -> None:
     """
     Writes the provided data to a JSON file.
-    Logs any errors that occur during the write operation.
+
+    Args:
+        file_path: Path to the JSON file
+        data: Data to write
     """
-    try:
-        with open(file_path, 'w', encoding="utf-8") as file:
-            json.dump(data, file, ensure_ascii=False, indent=4)
-    except Exception as e:
-        logging.error("Error saving JSON file '%s': %s", file_path, e)
+    with session_lock:
+        try:
+            with open(file_path, 'w', encoding="utf-8") as file:
+                json.dump(data, file, ensure_ascii=False, indent=4)
+        except Exception as e:
+            log.error("Error saving JSON file '%s': %s", file_path, e)
+
+
+async def load_session_cache() -> None:
+    """Loads session data from session.json into memory cache"""
+    global session_cache
+    session_cache = await asyncio.to_thread(read_json, "session.json") or {}
+    log.info(f"Loaded session cache with {len(session_cache)} servers")
+
+
+async def process_session_updates() -> None:
+    """Background task to process session updates from the queue"""
+    log.info("Starting session update processor")
+    while True:
+        try:
+            server_id, channel_id, new_data = await session_update_queue.get()
+            log.debug(
+                f"Processing session update for server {server_id}, channel {channel_id}")
+
+            session_data = await asyncio.to_thread(read_json, "session.json") or {}
+
+            if server_id not in session_data:
+                session_data[server_id] = {"channels": {}}
+            if "channels" not in session_data[server_id]:
+                session_data[server_id]["channels"] = {}
+
+            session_data[server_id]["channels"][channel_id] = new_data
+
+            await asyncio.to_thread(write_json, "session.json", session_data)
+
+            # Update in-memory cache
+            if server_id not in session_cache:
+                session_cache[server_id] = {"channels": {}}
+            if "channels" not in session_cache[server_id]:
+                session_cache[server_id]["channels"] = {}
+            session_cache[server_id]["channels"][channel_id] = new_data
+
+            session_update_queue.task_done()
+            log.debug(
+                f"Completed session update for server {server_id}, channel {channel_id}")
+        except Exception as e:
+            log.error(f"Error in process_session_updates: {e}")
+            # Ensure the queue item is marked as done even on error
+            session_update_queue.task_done()
+
+
+async def update_session_data(server_id: str, channel_id: str, new_data: Dict[str, Any]) -> None:
+    """
+    Updates the session data for a specific server and channel.
+
+    Args:
+        server_id: Server ID
+        channel_id: Channel ID
+        new_data: New session data
+    """
+    # Update in-memory cache immediately
+    if server_id not in session_cache:
+        session_cache[server_id] = {"channels": {}}
+    if "channels" not in session_cache[server_id]:
+        session_cache[server_id]["channels"] = {}
+    session_cache[server_id]["channels"][channel_id] = new_data
+
+    # Queue the update for persistent storage
+    await session_update_queue.put((server_id, channel_id, new_data))
+    log.debug(
+        f"Queued session update for server {server_id}, channel {channel_id}")
+
+
+def get_session_data(server_id: str, channel_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Gets session data for a specific server and channel from the in-memory cache.
+
+    Args:
+        server_id: Server ID
+        channel_id: Channel ID
+
+    Returns:
+        Optional[Dict[str, Any]]: Session data or None if not found
+    """
+    return session_cache.get(server_id, {}).get("channels", {}).get(channel_id)
