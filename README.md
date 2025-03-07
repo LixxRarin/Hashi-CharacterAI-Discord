@@ -1,9 +1,10 @@
-# Project Hashi橋 - Character.AI to Discord Servers
+# Project Hashi 橋 
+## Character.AI to Discord Servers
 
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-green.svg)](https://www.python.org/downloads/)
-[![Discord](https://img.shields.io/discord/1288665952099237898)](https://discord.gg/pPSk2g8YX2)
-
+[![Discord](https://img.shields.io/discord/1288665952099237898?style=plastic&logo=Discord&label=AquairoPallete)
+](https://discord.gg/pPSk2g8YX2)
 
 The Project Hashi that allows Character.AI personas to interact with users in your Discord server. Perfect for bringing AI personalities to your community!
 
@@ -20,17 +21,19 @@ The Project Hashi that allows Character.AI personas to interact with users in yo
   - [Discord Bot Creation](#discord-bot-creation)
   - [Installation](#installation)
   - [Configuration](#configuration)
-- [Acknowledgments](#-BLESS)
+  - [Setup Bot](#setup-bot)
+- [Acknowledgments](#-acknowledgments)
 - [License](#-license)
 
 ## 🌟 Features
 - Real-time interaction between Character.AI personas and Discord users
+- Uses webhooks and allows the bot to act as a standalone instance 
 - Simple YAML configuration
 - Customizable
 - Cross-platform compatibility (Anything that runs Python and has internet access)
 
 ## ⚠️ Warnings
-1. **This is beta software** - Expect bugs and report them on our [Discord](#)
+1. **This is beta software** - Expect bugs and report them on our [Discord](https://discord.gg/pPSk2g8YX2)
 2. **Credits required** - You must credit [@LixxRarin](https://github.com/LixxRarin) if modifying/distributing
 3. **No security bypass** - Does not interfere with Character.AI safety systems
 4. **Non-commercial use** - Strictly for experimental/educational purposes
@@ -38,17 +41,16 @@ The Project Hashi that allows Character.AI personas to interact with users in yo
 ## 🚧 Roadmap
 ### Core Improvements
 - [x] Emoji filtering system
-- [ ] DM interaction support
-- [ ] Multi-language translation
 - [x] Multi-bot instance support
+- [ ] DM interaction support
+- [ ] Add-ons/Plugins suport
 
 ### Discord Features
-- [-] Slash commands for:
-  - `/update_bridge` - Update Bridge
-  - `/reset` - If something goes wrong
-  - `/chatID` - Change the chat ID
-  - `/charID` - Change to other character
-  - `/config` - Adjust some settings dynamically
+- [X] Slash commands for: (More commands coming soon)
+  - `/character_info` - View character information
+  - `/restart` - If something goes wrong
+  - `/setup` - configure and create a bot on the channel and character ID
+  - `/remove` - Remove a bot from the server 
 
 ## 🛠️ Setup Guide
 
@@ -67,28 +69,26 @@ The Project Hashi that allows Character.AI personas to interact with users in yo
    - Message Content Intent
 4. Copy bot token (store securely)
 
-> You don't need to define a name or profile picture for your bot, Bridge does this automatically! (this is configurable)
-
 ### Installation
 
 #### Windows Users
 1. Download latest release [here](https://github.com/LixxRarin/CharacterAI-Discord-Bridge/releases)
-2. Run `Bridge.exe`
+2. Extract and Run `Bridge.exe`
 3. `config.yml` will auto-generate
 
-#### Linux/Python Users
+#### Linux/Source Users
 ```bash
-# Install Python 3.11
+# Install Python 3.11 (Use your Linux system package manager)
 sudo apt update && sudo apt install python3.11
 
 # Clone repository
 git clone git@github.com:LixxRarin/CharacterAI-Discord-Bridge.git
 cd bridge
 
-# Install dependencies
+# Install dependencies 
 pip install -r requirements.txt
 
-# Launch bridge
+# Launch Hashi
 python3.11 app.py
 ```
 
@@ -98,12 +98,11 @@ Edit `config.yml` with these essential values:
 ```yaml
 Discord:
   token: "YOUR_DISCORD_TOKEN" # From developer portal
-  channel_bot_chat: [CHANNEL_ID] # Right-click channel → Copy ID
-
-CAI:
+Character_AI:
   token: "YOUR_CHARACTER_AI_TOKEN"
-  character_id: "7OQWCw72T2hHr8JwNIjXd8KpTy663wI_piz4XCHbeZ4" # Neuro-sama example
 ```
+> The 'config.yaml' file is very well documented, and full of options!
+
 #### Getting Character.AI Token
 
 1. Go to the Character.AI homepage.  
@@ -128,11 +127,18 @@ Never share your token with anyone!!!
    ```
 2. Copy everything after last slash
 
+#### Setup Bot
+1. Use ```/setup``` on your Discord server, and fill in the Channel and Character ID fields. 
+
+> The Channel field will be the channel where the Character.AI AI will receive and send messages.
+
+> You don't need to define a name or profile picture for your bot, Bridge does this automatically! (this is configurable)
+
 ## 🔄 Updating
 
-> The program now updates itself, but if you need to, you can do it manually
+> The program updates itself, but if you need to, you can do it manually
 
-1. **Windows**: Replace executable
+1. **Windows**: Replace executable 
 2. **Source**: 
 ```bash
 # In the Bridge directory
