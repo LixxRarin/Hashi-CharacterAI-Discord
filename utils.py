@@ -109,10 +109,8 @@ session_cache: Dict[str, Any] = {}
 session_update_queue = asyncio.Queue()
 session_lock = threading.Lock()
 
-# Adicione esta configuração ao seu arquivo config.yml
+# Add this configuration to your config.yml file
 config_yaml = load_config()
-send_message_line_by_line = config_yaml.get(
-    "Options", {}).get("send_message_line_by_line", False)
 
 
 async def timeout_async(func: Callable[[], Awaitable[T]], timeout: float,

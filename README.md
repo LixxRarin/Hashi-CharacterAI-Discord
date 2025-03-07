@@ -1,11 +1,11 @@
-# Bridge - Character.AI to Discord Servers
+# Project Hashi橋 - Character.AI to Discord Servers
 
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-green.svg)](https://www.python.org/downloads/)
+[![Discord](https://img.shields.io/discord/1288665952099237898)](https://discord.gg/pPSk2g8YX2)
 
-The Bridge that allows Character.AI personas to interact with users in your Discord server. Perfect for bringing AI personalities to your community!
 
-It is worth noting that this project does not yet have a definitive name TwT...
+The Project Hashi that allows Character.AI personas to interact with users in your Discord server. Perfect for bringing AI personalities to your community!
 
 **Demo Server**: [Join Discord](https://discord.gg/pPSk2g8YX2) | **Report Issues**: [GitHub Issues](https://github.com/LixxRarin/CharacterAI-Discord-Bridge/issues)
 
@@ -40,10 +40,10 @@ It is worth noting that this project does not yet have a definitive name TwT...
 - [x] Emoji filtering system
 - [ ] DM interaction support
 - [ ] Multi-language translation
-- [ ] Multi-bot instance support
+- [x] Multi-bot instance support
 
 ### Discord Features
-- [ ] Slash commands for:
+- [-] Slash commands for:
   - `/update_bridge` - Update Bridge
   - `/reset` - If something goes wrong
   - `/chatID` - Change the chat ID
@@ -141,7 +141,7 @@ pip install -r requirements.txt --upgrade
 ```
 > Don't worry about the 'config.yml' configuration file, it is updated automatically without losing your data.
 
-## 🙏 BLESS
+## 🙏 Acknowledgments
 - **[KarstSkarn](https://github.com/KarstSkarn)** for inspiration from [ChAIScrapper](https://github.com/KarstSkarn/ChAIScrapper)
 - **[PyCharacterAI](https://github.com/pycharacterai)** team for unofficial API wrapper
 - **[Character.AI](https://character.ai/)**

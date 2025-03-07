@@ -20,10 +20,10 @@ Discord:
   # This is the token used to authenticate your bot with Discord.
   # Keep this token secure and do not share it publicly.
 
-  use_cai_avatar: true  # Whether to use the Character.AI profile picture for the bot.
-  # If set to true, the bot will display the avatar from Character.AI.
+  use_cai_avatar: true  # Whether to use the Character.AI profile picture for the all webhooks.
+  # If set to true, the webhook will display the avatar from Character.AI.
 
-  use_cai_display_name: true  # Whether to use the Character.AI display name for the bot.
+  use_cai_display_name: true  # Whether to use the Character.AI display name for the all webhooks.
   # If true, the bot's name will be replaced by the display name of the Character.AI character.
 
   messages_cache: "messages_cache.json"  # Path to the file where messages are cached.
@@ -36,15 +36,6 @@ Character_AI:
   token: "YOUR_CHARACTER_AI_TOKEN"
   # This is the token for authenticating your bot with Character.AI.
   # Like the Discord token, keep this token private and do not share it.
-
-  character_id: "7OQWCw72T2hHr8JwNIjXd8KpTy663wI_piz4XCHbeZ4"  # The ID of the Character.AI character.
-  # This is the unique identifier for the character you want the bot to use.
-  # The default ID is from Neuro-Sama
-
-  chat_id: null
-  # This is the ID of the specific chat session you want the bot to join.
-  # It allows the bot to maintain continuity in its interactions with users.
-  # Use “null” if you don't have a chat ID, the program will automatically fill "cache.json" in a new ID.
 
   new_chat_on_reset: false  # Whether to create a new chat session when resetting.
   # If set to true, a new chat session will be created each time the bot is reset.
@@ -64,8 +55,6 @@ Character_AI:
 
 # Bot Interaction Settings
 Options:
-  webhook_mode: false
-  # This option is in beta.
   
   auto_update: true # If true, the program will check for a new update every time it starts up
   #If true, the program will automatically search for an update
