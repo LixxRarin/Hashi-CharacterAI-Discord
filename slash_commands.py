@@ -5,6 +5,7 @@ from discord import app_commands
 from discord.ext import commands
 
 import utils
+import webhook
 from cai import get_bot_info
 
 
@@ -13,51 +14,66 @@ class SlashCommands(commands.Cog):
         self.bot = bot
 
     @app_commands.command(name="character_info", description="Show Character.AI bot information.")
-    async def character_info(self, interaction: discord.Integration):
+    async def character_info(self, interaction: discord.Integration, channel: discord.TextChannel):
         """
         Fetches bot information from Character.AI and displays it in an embed.
         """
-        await interaction.response.defer()  # Defer response while fetching data
+
+        session_data = utils.read_json("session.json")
+        character_id = None
 
         try:
-            bot_data = await get_bot_info()  # Fetch bot info
-        except Exception as e:
-            utils.log.error(f"Failed to retrieve bot info: {e}")
-            await interaction.followup.send("❌ **Error:** Unable to retrieve bot information. Please try again later.")
-            return
+            character_id = session_data[str(
+                channel.guild.id)]["channels"][str(channel.id)]["character_id"]
+        except:
+            utils.log.warning(
+                f"There is no character available for this channel: {channel.id}")
 
-        # Extract relevant details
-        name = bot_data.get("name", "Unknown Bot")
-        # Fix: Use None instead of discord.Embed.Empty
-        avatar_url = bot_data.get("avatar_url", None)
-        title = bot_data.get("title", "No title available.")
-        description = bot_data.get(
-            "description", "No description provided.").replace("\n", " ")
-        visibility = bot_data.get("visibility", "Unknown")
-        interactions = bot_data.get("num_interactions", 0)
-        author = bot_data.get("author_username", "Unknown Author")
+        await interaction.response.defer()  # Defer response while fetching data
 
-        # Create embed
-        embed = discord.Embed(
-            title=f"{name} - Character Information",
-            description=f"**{title}**\n\n{description}",
-            color=discord.Color.blue()
-        )
-        if avatar_url:  # Only set thumbnail if a valid URL exists
-            embed.set_thumbnail(url=avatar_url)
+        if character_id is None:
+            await interaction.followup.send("There is no character available for this channel. (Try create)")
+        else:
+            try:
+                # Fetch bot info
+                bot_data = await get_bot_info(character_id=character_id)
+            except Exception as e:
+                utils.log.error(f"Failed to retrieve bot info: {e}")
+                await interaction.followup.send("❌ **Error:** Unable to retrieve bot information. Please try again later.")
+                return
 
-        embed.add_field(name="👤 Creator:", value=author, inline=True)
-        embed.add_field(name="🔄 Total Interactions:",
-                        value=f"{interactions:,}", inline=True)
-        embed.add_field(name="🌎 Visibility:",
-                        value=visibility.capitalize(), inline=True)
-        embed.set_footer(
-            text="Character.AI bots are available on Discord thanks to Bridge. :3")
-        embed.add_field(name="🔗 Learn More about Bridge",
-                        value="[GitHub Repository](https://github.com/LixxRarin/CharacterAI-Discord-Bridge)", inline=False)
+            # Extract relevant details
+            name = bot_data.get("name", "Unknown Bot")
+            # Fix: Use None instead of discord.Embed.Empty
+            avatar_url = bot_data.get("avatar_url", None)
+            title = bot_data.get("title", "No title available.")
+            description = bot_data.get(
+                "description", "No description provided.").replace("\n", " ")
+            visibility = bot_data.get("visibility", "Unknown")
+            interactions = bot_data.get("num_interactions", 0)
+            author = bot_data.get("author_username", "Unknown Author")
 
-        # Send the embed
-        await interaction.followup.send(embed=embed)
+            # Create embed
+            embed = discord.Embed(
+                title=f"{name} - Character Information",
+                description=f"**{title}**\n\n{description}",
+                color=discord.Color.blue()
+            )
+            if avatar_url:  # Only set thumbnail if a valid URL exists
+                embed.set_thumbnail(url=avatar_url)
+
+            embed.add_field(name="👤 Creator:", value=author, inline=True)
+            embed.add_field(name="🔄 Total Interactions:",
+                            value=f"{interactions:,}", inline=True)
+            embed.add_field(name="🌎 Visibility:",
+                            value=visibility.capitalize(), inline=True)
+            embed.set_footer(
+                text="Character.AI bots are available on Discord thanks to Bridge. :3")
+            embed.add_field(name="🔗 Learn More about Bridge",
+                            value="[GitHub Repository](https://github.com/LixxRarin/CharacterAI-Discord-Bridge)", inline=False)
+
+            # Send the embed
+            await interaction.followup.send(embed=embed)
 
     @app_commands.command(name="ping", description="Displays latency and possible connection issues.")
     async def ping(self, interaction: discord.Interaction):

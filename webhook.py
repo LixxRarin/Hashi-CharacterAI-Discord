@@ -90,7 +90,7 @@ class WebHook(commands.Cog):
             )
             return None
 
-    @app_commands.command(name="setup", description="Configura uma IA para o servidor.")
+    @app_commands.command(name="setup", description="Setup an AI for the server.")
     @app_commands.default_permissions(administrator=True)
     @app_commands.describe(channel="Channel to monitor for the IA", character_id="Character ID")
     async def setup(self, interaction: discord.Interaction, channel: discord.TextChannel, character_id: str):
