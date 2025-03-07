@@ -11,7 +11,7 @@ from discord.ext import commands
 
 import utils
 import cai
-from utils import update_session_data
+from utils import update_session_data, get_session_data
 
 # Global session data
 session_data: Dict[str, Any] = {}
@@ -202,6 +202,59 @@ class WebHook(commands.Cog):
                 ephemeral=True
             )
 
+    @app_commands.command(name="remove_bot", description="Remove um bot e seu webhook do sistema.")
+    @app_commands.default_permissions(administrator=True)
+    @app_commands.describe(channel="Canal do qual remover o bot")
+    async def remove_bot(self, interaction: discord.Interaction, channel: discord.TextChannel):
+        """
+        Remove a bot and its associated webhook from the system.
+
+        Args:
+            interaction: Discord interaction
+            channel: Discord channel from which to remove the bot
+        """
+        await interaction.response.defer(ephemeral=True)
+
+        server_id = str(interaction.guild.id)
+        channel_id_str = str(channel.id)
+
+        utils.log.info(
+            f"Removing bot from server {server_id}, channel {channel_id_str}")
+
+        # Get or create webhook lock for this channel
+        if channel_id_str not in self.webhook_locks:
+            self.webhook_locks[channel_id_str] = asyncio.Lock()
+
+        # Acquire lock to prevent concurrent webhook operations on the same channel
+        async with self.webhook_locks[channel_id_str]:
+            # Check if session exists for this channel
+            session = utils.get_session_data(server_id, channel_id_str)
+
+            if not session:
+                await interaction.followup.send(f"No bot found in channel {channel.mention}.", ephemeral=True)
+                return
+
+            # Remove webhook
+            webhook_url = session.get("webhook_url")
+            if webhook_url:
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        webhook = discord.Webhook.from_url(
+                            webhook_url, session=session)
+                        await webhook.delete(reason="Bot removed from channel")
+                    utils.log.info(
+                        f"Deleted webhook for channel {channel_id_str}")
+                except Exception as e:
+                    utils.log.error(f"Failed to delete webhook: {e}")
+
+            # Remove session data
+            await utils.remove_session_data(server_id, channel_id_str)
+
+            # Não é mais necessário chamar clear_message_cache separadamente,
+            # pois já está incluído em remove_session_data
+
+            await interaction.followup.send(f"Bot successfully removed from channel {channel.mention}.", ephemeral=True)
+
 
 async def load_session_data():
     """Load session data from session.json"""
@@ -221,7 +274,15 @@ async def webhook_send(url: str, message: str) -> None:
     """
     async with aiohttp.ClientSession() as session:
         webhook_obj = discord.Webhook.from_url(url, session=session)
-        await webhook_obj.send(message)
+
+        # Check if we should send line by line
+        if utils.config_yaml["Options"].get("send_message_line_by_line", False):
+            lines = message.split('\n')
+            for line in lines:
+                if line.strip():  # Skip empty lines
+                    await webhook_obj.send(line)
+        else:
+            await webhook_obj.send(message)
 
 
 async def setup(bot):

@@ -109,6 +109,11 @@ session_cache: Dict[str, Any] = {}
 session_update_queue = asyncio.Queue()
 session_lock = threading.Lock()
 
+# Adicione esta configuração ao seu arquivo config.yml
+config_yaml = load_config()
+send_message_line_by_line = config_yaml.get(
+    "Options", {}).get("send_message_line_by_line", False)
+
 
 async def timeout_async(func: Callable[[], Awaitable[T]], timeout: float,
                         on_timeout: Callable[[], Awaitable[None]]) -> None:
@@ -183,6 +188,20 @@ def test_internet() -> bool:
         return False
 
 
+def is_channel_active(server_id: str, channel_id: str) -> bool:
+    """
+    Check if a channel is still active in the session data.
+
+    Args:
+        server_id: Server ID
+        channel_id: Channel ID
+
+    Returns:
+        bool: True if the channel is active, False otherwise
+    """
+    return channel_id in session_cache.get(server_id, {}).get("channels", {})
+
+
 def capture_message(message_info, reply_message=None) -> None:
     """
     Captures a message from a specified channel and stores it in the messages_cache.json file.
@@ -204,6 +223,10 @@ def capture_message(message_info, reply_message=None) -> None:
     # Extract server_id and channel_id from message_info
     server_id = str(message_info.guild.id)
     channel_id = str(message_info.channel.id)
+
+    # Check if the channel is still active before capturing the message
+    if not is_channel_active(server_id, channel_id):
+        return
 
     # Ensure server and channel keys exist
     if server_id not in dados:
@@ -464,3 +487,57 @@ def get_session_data(server_id: str, channel_id: str) -> Optional[Dict[str, Any]
         Optional[Dict[str, Any]]: Session data or None if not found
     """
     return session_cache.get(server_id, {}).get("channels", {}).get(channel_id)
+
+
+async def clear_message_cache(server_id: str, channel_id: str) -> None:
+    """
+    Limpa o cache de mensagens para um canal específico.
+
+    Args:
+        server_id: ID do servidor
+        channel_id: ID do canal
+    """
+    cache_data = await asyncio.to_thread(read_json, "messages_cache.json")
+    if cache_data and server_id in cache_data and channel_id in cache_data[server_id]:
+        del cache_data[server_id][channel_id]
+        await asyncio.to_thread(write_json, "messages_cache.json", cache_data)
+        log.info(
+            f"Cleared message cache for server {server_id}, channel {channel_id}")
+
+
+async def remove_session_data(server_id: str, channel_id: str) -> None:
+    """
+    Remove os dados da sessão para um canal específico.
+
+    Args:
+        server_id: ID do servidor
+        channel_id: ID do canal
+    """
+    global session_cache
+    if server_id in session_cache and channel_id in session_cache[server_id].get("channels", {}):
+        del session_cache[server_id]["channels"][channel_id]
+        await update_session_data(server_id, channel_id, None)
+        log.info(
+            f"Removed session data for server {server_id}, channel {channel_id}")
+
+    # Limpa o cache de mensagens
+    await clear_message_cache(server_id, channel_id)
+
+
+async def remove_sent_messages_from_cache(server_id: str, channel_id: str) -> None:
+    """
+    Remove sent messages from cache for a specific channel.
+    Only removes messages that have been processed by the AI.
+
+    Args:
+        server_id: Server ID
+        channel_id: Channel ID
+    """
+    cache_data = await asyncio.to_thread(read_json, "messages_cache.json")
+    if cache_data and server_id in cache_data and channel_id in cache_data[server_id]:
+        # Instead of keeping only the last message, we'll clear the cache completely
+        # This is because the AI has already processed all messages in the cache
+        cache_data[server_id][channel_id] = {}
+        await asyncio.to_thread(write_json, "messages_cache.json", cache_data)
+        log.info(
+            f"Removed processed messages from cache for server {server_id}, channel {channel_id}")

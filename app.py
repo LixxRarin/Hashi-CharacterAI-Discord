@@ -142,7 +142,6 @@ class BridgeBot(commands.Bot):
                     except Exception as e:
                         utils.log.error(
                             "Error sending system message via webhook for channel %s: %s", channel_id, e)
-        utils.log.info("Inicializado.")
 
 
 # Initialize the AI bot helper class from AI_utils

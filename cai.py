@@ -348,6 +348,8 @@ async def process_response_queue():
             callback = task_data["callback"]
 
             utils.log.debug(f"Processing response for channel {channel_id}")
+            utils.log.debug(
+                f"Generating AI response with chat_id: {chat_id}, character_id: {character_id}")
 
             try:
                 # Get cached messages
