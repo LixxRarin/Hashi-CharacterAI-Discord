@@ -64,25 +64,25 @@ class WebHook(commands.Cog):
                                 webhook_obj.url)
                 return webhook_obj.url
             except discord.Forbidden:
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     "I do not have permission to create webhooks in this channel.",
                     ephemeral=True
                 )
                 return None
             except discord.HTTPException as e:
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     f"An error occurred while creating the webhook: {e}",
                     ephemeral=True
                 )
                 return None
             except Exception as e:
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     f"Error: {e}",
                     ephemeral=True
                 )
                 return None
         else:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "I do not have permission to manage webhooks in this server.",
                 ephemeral=True
             )

@@ -1,4 +1,4 @@
-# Project Hashi 橋
+# Project Hashi - 橋
 ### Character.AI to Discord Servers!
 
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)  [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-green.svg)](https://www.python.org/downloads/)  ![Discord](https://img.shields.io/discord/1288665952099237898?logo=Discord&label=AquairoPallete&link=https%3A%2F%2Fdiscord.gg%2FpPSk2g8YX2)
@@ -7,7 +7,13 @@ Project Hashi allows Character.AI personas to interact with users in your Discor
 
 **Demo Server**: [Join Discord](https://discord.gg/pPSk2g8YX2) | **Report Issues**: [GitHub Issues](https://github.com/LixxRarin/CharacterAI-Discord-Bridge/issues)
 
-<a href="https://ibb.co/kRLnXxq"><img src="https://i.ibb.co/XhnBtbF/Captura-de-tela-2025-02-02-141343.png" alt="..." border="0"></a>
+<a href="https://files.catbox.moe/uwwd6m.png"><img src="https://files.catbox.moe/uwwd6m.png" alt="..." border="0"></a>
+
+## 🌟 Add the Bot to Your Server (Experimental)
+
+[Click here to invite the bot](https://discord.com/oauth2/authorize?client_id=1115332091048120481)
+
+> **Note:** At the moment, I don't have a stable server to host the bot, so there may be occasional downtimes and instabilities. Some settings are also unavailable right now. If you'd like, you can host the bot yourself for a smoother experience! :3
 
 ## 📌 Contents
 - [Features](#-features) 

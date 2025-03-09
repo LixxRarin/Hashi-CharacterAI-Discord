@@ -17,7 +17,7 @@ from config_updater import ConfigManager
 
 if not os.path.exists("version.txt"):
     with open("version.txt", "w") as file:
-        file.write("1.0.8\n")
+        file.write("1.0.9\n")
 
 if not os.path.exists("cache.json"):
     with open("cache.json", "w") as file:
