@@ -1,7 +1,7 @@
 # Project Hashi 橋
 ### Character.AI to Discord Servers!
 
-[![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)  [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-green.svg)](https://www.python.org/downloads/)  [![Discord](https://img.shields.io/discord/1288665952099237898?logo=Discord&label=AquairoPallete&link=https%3A%2F%2Fdiscord.gg%2FpPSk2g8YX2)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)  [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-green.svg)](https://www.python.org/downloads/)  ![Discord](https://img.shields.io/discord/1288665952099237898?logo=Discord&label=AquairoPallete&link=https%3A%2F%2Fdiscord.gg%2FpPSk2g8YX2)
  
 Project Hashi allows Character.AI personas to interact with users in your Discord server. Perfect for bringing AI personalities to your community!
 

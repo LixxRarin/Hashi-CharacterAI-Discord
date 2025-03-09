@@ -1,11 +1,9 @@
 import asyncio
-import json
 import time
 from typing import Dict, Any, Optional, Set, List
 
 import aiohttp
 import discord
-import random
 
 import cai
 import utils
@@ -72,33 +70,39 @@ class discord_AI_bot:
 
     def time_typing(self, channel, user, client):
         """
-        Update the last_message_time in the session when a user (other than the bot) is typing.
+        Continuously update last_message_time while user is typing to keep session active.
 
         Args:
-            channel: The Discord channel
-            user: The Discord user
-            client: The Discord client
+            channel: Discord channel object
+            user: Discord user object
+            client: Discord client instance
         """
         try:
-            # Skip if not in a guild or if the user is the bot
+            # Ignore DMs and bot's own typing
             if not hasattr(channel, "guild") or not channel.guild or user == client.user:
                 return
 
             server_id = str(channel.guild.id)
             channel_id_str = str(channel.id)
 
-            # Check if this channel has a session
-            session = get_session_data(server_id, channel_id_str)
-
-            if session:
+            # Only process if session exists
+            if session := get_session_data(server_id, channel_id_str):
                 current_time = time.time()
+
+                # Always update timestamp and persist
                 session["last_message_time"] = current_time
-                asyncio.create_task(utils.update_session_data(
-                    server_id, channel_id_str, session))
+                asyncio.create_task(
+                    utils.update_session_data(
+                        server_id, channel_id_str, session)
+                )
+
                 utils.log.debug(
-                    f"User {user} is typing in channel {channel}; updated session last_message_time to {current_time}.")
+                    f"Typing activity from {user} in {channel.name}, "
+                    f"session extended to {current_time}"
+                )
+
         except Exception as e:
-            utils.log.error(f"Error in time_typing: {e}")
+            utils.log.error(f"Typing handler error: {str(e)}", exc_info=True)
 
     async def read_channel_messages(self, message, client):
         """
@@ -401,7 +405,7 @@ class discord_AI_bot:
         """
         try:
             while True:
-                await asyncio.sleep(3)
+                await asyncio.sleep(0.5)
 
                 # Reload session data to get latest status
                 current_session = get_session_data(server_id, channel_id_str)
@@ -428,7 +432,10 @@ class discord_AI_bot:
                 cache_count = len(channel_messages)
 
                 time_since_last = time.time() - current_session.get("last_message_time", 0)
-                if ((time_since_last >= 7 or cache_count >= 5) and cache_count > 0):
+                delay = utils.config_yaml.get(
+                    "Options", {}).get("delay_for_generation", 5)
+
+                if ((time_since_last >= delay or cache_count >= 5) and cache_count > 0):
                     utils.log.debug(
                         "Inactivity detected for channel %s (%d seconds, %d messages). Triggering AI response.",
                         channel_id_str, time_since_last, cache_count

@@ -1,6 +1,4 @@
 import time
-import json
-import os
 import asyncio
 from typing import Dict, Any, Optional, List
 
@@ -89,6 +87,96 @@ class WebHook(commands.Cog):
                 ephemeral=True
             )
             return None
+
+    @app_commands.command(name="chat_id", description="Setup a chat ID for the AI")
+    @app_commands.default_permissions(administrator=True)
+    @app_commands.describe(
+        channel="AI Channel",
+        chat_id="Chat ID (Leave empty to create a new Chat ID)"
+    )
+    async def chat_id(
+        self,
+        interaction: discord.Interaction,
+        channel: discord.TextChannel,
+        chat_id: str = None
+    ):
+        """
+        Updates the chat_id in session.json and initializes session messages.
+        If chat_id is left empty, cai.initialize_session_messages() will create one automatically.
+
+        Args:
+            interaction: Discord interaction.
+            channel: Discord channel for the AI.
+            chat_id: Chat ID to set (optional).
+        """
+        await interaction.response.defer(ephemeral=True)
+        server_id = str(interaction.guild.id)
+        channel_id_str = str(channel.id)
+
+        # Retrieve the session data for the channel.
+        session = utils.get_session_data(server_id, channel_id_str)
+
+        if session is None:
+            utils.log.error(
+                f"No session data found for channel {channel_id_str}. Run setup first.")
+            await interaction.followup.send(
+                "Session data not found. Please run the setup command first.",
+                ephemeral=True
+            )
+            return
+
+        session["setup_has_already"] = False
+        # Update the chat_id in session data (set to None if empty so that it auto-creates)
+        session["chat_id"] = chat_id if chat_id else None
+        await update_session_data(server_id, channel_id_str, session)
+        utils.log.info(
+            f"Updated chat ID for channel {channel_id_str} to {session['chat_id']}"
+        )
+
+        # Initialize session messages, which will also create a chat_id automatically if needed.
+        greetings, reply_system = await cai.initialize_session_messages(session, server_id, channel_id_str)
+
+        # Update session data with new chat_id flag
+        session = utils.get_session_data(server_id, channel_id_str)
+        if session:
+            session["setup_has_already"] = True
+            await update_session_data(server_id, channel_id_str, session)
+
+        # Get the webhook URL from session data to send messages.
+        WB_url = session.get("webhook_url")
+        if not WB_url:
+            utils.log.error(
+                f"Webhook URL not found in session data for channel {channel_id_str}.")
+            await interaction.followup.send(
+                "Webhook URL not found in session data.",
+                ephemeral=True
+            )
+            return
+
+        # Send greeting message via webhook if available.
+        if greetings:
+            try:
+                await webhook_send(WB_url, greetings)
+                utils.log.info(
+                    "Greeting message sent via webhook for channel %s", channel_id_str)
+            except Exception as e:
+                utils.log.error(
+                    "Error sending greeting via webhook for channel %s: %s", channel_id_str, e)
+
+        # Send system message via webhook if available.
+        if reply_system:
+            try:
+                await webhook_send(WB_url, reply_system)
+                utils.log.info(
+                    "System message sent via webhook for channel %s", channel_id_str)
+            except Exception as e:
+                utils.log.error(
+                    "Error sending system message via webhook for channel %s: %s", channel_id_str, e)
+
+        await interaction.followup.send(
+            f"Chat ID configuration successful! Current chat ID: `{session['chat_id']}`",
+            ephemeral=True
+        )
 
     @app_commands.command(name="setup", description="Setup an AI for the server.")
     @app_commands.default_permissions(administrator=True)
@@ -202,9 +290,9 @@ class WebHook(commands.Cog):
                 ephemeral=True
             )
 
-    @app_commands.command(name="remove_bot", description="Remove um bot e seu webhook do sistema.")
+    @app_commands.command(name="remove_bot", description="Remove a bot and its webhook from the system.")
     @app_commands.default_permissions(administrator=True)
-    @app_commands.describe(channel="Canal do qual remover o bot")
+    @app_commands.describe(channel="Channel from which to remove the bot")
     async def remove_bot(self, interaction: discord.Interaction, channel: discord.TextChannel):
         """
         Remove a bot and its associated webhook from the system.

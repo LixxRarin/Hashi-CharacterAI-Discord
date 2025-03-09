@@ -8,7 +8,6 @@ import threading
 from typing import Any, Dict, Optional, Callable, Awaitable, TypeVar, Union
 
 import yaml
-import aiohttp
 from colorama import Fore, init
 
 # Type definitions

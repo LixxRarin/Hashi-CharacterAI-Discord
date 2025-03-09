@@ -12,7 +12,7 @@ yaml.preserve_quotes = True
 yaml.encoding = "utf-8"
 
 # Default configuration content
-DEFAULT_CONFIG_CONTENT = r"""version: "1.1.1" # Don't touch here
+DEFAULT_CONFIG_CONTENT = r"""version: "1.1.2" # Don't touch here
 
 # Discord Bot Configuration
 Discord:
@@ -75,15 +75,17 @@ Options:
   # Send the character reply to the system message
   # This is ignored if the system message is null
 
-  max_response_attempts: -1  # Set the number of response attempts, -1 for automatic retries.
-  # The bot will try to respond a maximum of this many times. If set to -1, the bot will keep retrying until a valid response is received.
-  # If it is still not possible to generate a message, the bot will send an error message
-
   send_message_line_by_line: true  # Whether to send bot messages one line at a time.
   # If true, the bot will send each message in the chat as separate lines, rather than sending everything at once.
   # This can make the interaction feel more natural or less overwhelming.
 
-  debug_mode: true  # Enable debug mode for troubleshooting.
+  delay_for_generation: 5 # In seconds
+  # This is the delay the bot will wait before generating a response
+  # When a message is sent, it will wait for this time (a longer delay can be useful to capture multiple messages at once)
+  # If a user starts typing while the timer is counting down, the timer will be reset and start again
+  # Use 0 for instant response
+
+  debug_mode: false  # Enable debug mode for troubleshooting.
   # When true, the bot will log detailed information about its processes in the console, which is helpful for debugging.
   # This mode should be off in production to avoid excessive logging.
 

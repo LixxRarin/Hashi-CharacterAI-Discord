@@ -208,12 +208,11 @@ def return_version():
 
 def startup_screen():
     os.system("cls" if os.name == "nt" else "clear")
-    banner = f"""
-{Fore.CYAN}{Style.BRIGHT}{Fore.WHITE}------- C.AI to Discord ~ Bridge -------
-{Fore.YELLOW}Description: {Fore.WHITE}An AI-powered Discord bot using Character.AI! :3
-{Fore.YELLOW}Creator: {Fore.WHITE}LixxRarin
-{Fore.YELLOW}GitHub: {Fore.WHITE}https://github.com/LixxRarin/CharacterAI-Discord-Bridge
-{Fore.YELLOW}Version: {Fore.WHITE}{return_version()}
+    banner = f"""{Style.BRIGHT}{Fore.WHITE}✦・ﾟ* Hashi 橋 - C.AI to Discord ﾟ・✦
+{Fore.YELLOW}▶ {Fore.WHITE}Description: {Fore.WHITE}An AI-powered Discord bot using Character.AI!
+{Fore.YELLOW}▶ {Fore.WHITE}Creator: {Fore.WHITE}LixxRarin
+{Fore.YELLOW}▶ {Fore.WHITE}GitHub: {Fore.WHITE}https://github.com/LixxRarin/CharacterAI-Discord-Bridge
+{Fore.YELLOW}▶ {Fore.WHITE}Version: {Fore.WHITE}{return_version()}
 {Style.RESET_ALL}
 """
     print(banner)
