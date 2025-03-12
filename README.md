@@ -7,7 +7,7 @@ Project Hashi allows Character.AI personas to interact with users in your Discor
 
 **Demo Server**: [Join Discord](https://discord.gg/pPSk2g8YX2) | **Report Issues**: [GitHub Issues](https://github.com/LixxRarin/Hashi-Character_AI-Discord/issues)
 
-<a href="https://ibb.co/kRLnXxq"><img src="https://i.ibb.co/XhnBtbF/Captura-de-tela-2025-02-02-141343.png" alt="..." border="0"></a>
+<a href="https://files.catbox.moe/uwwd6m.png"><img src="https://files.catbox.moe/uwwd6m.png" alt="..." border="0"></a>
 
 ## 📌 Contents
 - [Features](#-features) 

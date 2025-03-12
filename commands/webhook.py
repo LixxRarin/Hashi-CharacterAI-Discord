@@ -311,7 +311,7 @@ Now, send your message introducing yourself in the chat, following the language 
                         "Error sending system message via webhook for channel %s: %s", channel_id_str, e)
 
             await interaction.followup.send(
-                f"Configuration successful!\nChannel: {channel.mention}\nCharacter ID: `{character_id}`.\nAI name: {character_info['name']}\nWebhook: {WB_url}",
+                f"Setup successful!!\n**AI name:** {character_info['name']}\n**Character ID:** `{character_id}`\n**Channel:** {channel.mention}\n**Webhook Link:** {WB_url}",
                 ephemeral=True
             )
 
