@@ -19,10 +19,6 @@ if not os.path.exists("version.txt"):
     with open("version.txt", "w") as file:
         file.write("1.1.0\n")
 
-if not os.path.exists("cache.json"):
-    with open("cache.json", "w") as file:
-        file.write("{}")
-
 # Initialize colorama for cross-platform colored output
 init(autoreset=True)
 

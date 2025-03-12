@@ -183,7 +183,10 @@ class SlashCommands(commands.Cog):
         if new_chat_on_reset is not None:
             config["new_chat_on_reset"] = new_chat_on_reset
         if system_message is not None:
-            config["system_message"] = system_message
+            if system_message.lower() == "none":
+                config["system_message"] = None
+            else:
+                config["system_message"] = system_message
 
         # ------------------ Options Settings --------------------
         # options = config.setdefault("Options", {})
@@ -200,29 +203,88 @@ class SlashCommands(commands.Cog):
         # msg_format = config.setdefault("MessageFormatting", {})
         if remove_ai_text_from is not None:
             # Convert comma-separated string into a list of regex patterns
-            config["remove_ai_text_from"] = [pattern.strip()
-                                             for pattern in remove_ai_text_from.split(",")]
+            if remove_ai_text_from.lower() == "none":
+                config["remove_ai_text_from"] = []
+            else:
+                config["remove_ai_text_from"] = [pattern.strip()
+                                                 for pattern in remove_ai_text_from.split(",")]
         if remove_user_text_from is not None:
-            config["remove_user_text_from"] = [pattern.strip()
-                                               for pattern in remove_user_text_from.split(",")]
+            if remove_user_text_from.lower() == "none":
+                config["remove_user_text_from"] = []
+            else:
+                config["remove_user_text_from"] = [pattern.strip()
+                                                   for pattern in remove_user_text_from.split(",")]
         if remove_user_emoji is not None:
             config["remove_user_emoji"][
                 "user"] = remove_user_emoji
         if remove_ai_emoji is not None:
             config["remove_ai_emoji"] = remove_ai_emoji
         if user_reply_format_syntax is not None:
-            config["user_reply_format_syntax"] = user_reply_format_syntax
+            if user_reply_format_syntax.lower() == "none":
+                config["user_reply_format_syntax"] = "{message}"
+            else:
+                config["user_reply_format_syntax"] = user_reply_format_syntax
         if user_format_syntax is not None:
-            config["user_format_syntax"] = user_format_syntax
-
+            if user_format_syntax.lower() == "none":
+                config["user_format_syntax"] = "{message}"
+            else:
+                config["user_format_syntax"] = user_format_syntax
         # Save the updated configuration back to the session
         await func.update_session_data(server_id, channel_id, session)
         await interaction.response.send_message("Configuration updated successfully!", ephemeral=True)
 
-    @app_commands.command(name="copy_config", description="Update bot configuration settings")
+    @app_commands.command(name="copy_config", description="Copies all settings from one AI to another!")
     @app_commands.default_permissions(administrator=True)
     async def copy_config(self, interaction: discord.Integration, from_channel: discord.TextChannel, to_channel: discord.TextChannel):
-        pass
+
+        from_channel_session = func.get_session_data(
+            str(from_channel.guild.id), str(from_channel.id))
+        to_channel_session = func.get_session_data(
+            str(to_channel.guild.id), str(to_channel.id))
+
+        if from_channel_session is None:
+            await interaction.response.send_message(f"No configured AI found in {from_channel.mention}, try `/setup`.", ephemeral=True)
+            return
+        if to_channel_session is None:
+            await interaction.response.send_message(f"No configured AI found in {to_channel.mention}, try `/setup`.", ephemeral=True)
+            return
+
+        to_channel_session["config"] = from_channel_session["config"]
+
+        func.update_session_data(str(to_channel.guild.id), str(
+            to_channel.id), to_channel_session)
+
+        await interaction.response.send_message(f"Settings successfully copied from {from_channel} to {to_channel}!", ephemeral=True)
+
+    @app_commands.command(name="show_config", description="Display all configuration settings for a specific channel.")
+    async def show_config(self, interaction: discord.Interaction, channel: discord.TextChannel):
+        """
+        Retrieves and displays all configuration settings from session.json for a given channel.
+        """
+        # Load session data
+        session_data = func.read_json("session.json")
+
+        try:
+            # Get channel-specific configuration
+            channel_config = session_data[str(
+                channel.guild.id)]["channels"][str(channel.id)]["config"]
+        except KeyError:
+            func.log.warning(
+                f"No configuration found for channel: {channel.id}")
+            await interaction.response.send_message("❌ No configuration found for this channel.", ephemeral=True)
+            return
+
+        # Build embed to display config
+        embed = discord.Embed(
+            title=f"Configuration for the channel: {channel.mention}",
+            color=discord.Color.light_gray()
+        )
+
+        for key, value in channel_config.items():
+            embed.add_field(name=key, value=str(value), inline=False)
+
+        # Send the configuration summary
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 async def setup(bot):
