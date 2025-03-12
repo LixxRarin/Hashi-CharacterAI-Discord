@@ -231,14 +231,15 @@ def capture_message(message_info, reply_message=None) -> None:
     if channel_id not in dados[server_id]:
         dados[server_id][channel_id] = {}
 
+    session = get_session_data(server_id, channel_id)
+
     # Retrieve format templates from configuration
-    template_syntax = config_yaml.get("MessageFormatting", {}).get(
-        "user_format_syntax", "{message}")
-    reply_template_syntax = config_yaml.get("MessageFormatting", {}).get(
+    template_syntax = session["config"].get("user_format_syntax", "{message}")
+    reply_template_syntax = session["config"].get(
         "user_reply_format_syntax", "{message}")
 
     # Process message content and author name based on emoji removal configuration
-    if config_yaml["MessageFormatting"]["remove_emojis"]["user"]:
+    if session["config"]["remove_user_emoji"]:
         msg_text = remove_emoji(message_info.content)
         msg_name = remove_emoji(
             message_info.author.global_name or message_info.author.name)
@@ -255,13 +256,13 @@ def capture_message(message_info, reply_message=None) -> None:
     }
 
     # Remove unwanted text patterns from message content
-    for pattern in config_yaml.get("MessageFormatting", {}).get("remove_user_text_from", []):
+    for pattern in session["config"].get("remove_user_text_from", []):
         syntax["message"] = re.sub(
             pattern, '', syntax["message"], flags=re.MULTILINE).strip()
 
     # Process reply message if provided
     if reply_message:
-        if config_yaml["MessageFormatting"]["remove_emojis"]["user"]:
+        if session["config"]["remove_user_emoji"]:
             reply_text = remove_emoji(reply_message.content)
             reply_name = remove_emoji(
                 reply_message.author.global_name or reply_message.author.name)
@@ -274,7 +275,7 @@ def capture_message(message_info, reply_message=None) -> None:
             "reply_name": reply_name,
             "reply_message": reply_text,
         })
-        for pattern in config_yaml.get("MessageFormatting", {}).get("remove_user_text_from", []):
+        for pattern in session["config"].get("remove_user_text_from", []):
             syntax["reply_message"] = re.sub(
                 pattern, '', syntax["reply_message"], flags=re.MULTILINE).strip()
 
