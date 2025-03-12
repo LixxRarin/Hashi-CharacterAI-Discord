@@ -5,7 +5,7 @@
  
 Project Hashi allows Character.AI personas to interact with users in your Discord server. Perfect for bringing AI personalities to your community!
 
-**Demo Server**: [Join Discord](https://discord.gg/pPSk2g8YX2) | **Report Issues**: [GitHub Issues](https://github.com/LixxRarin/CharacterAI-Discord-Bridge/issues)
+**Demo Server**: [Join Discord](https://discord.gg/pPSk2g8YX2) | **Report Issues**: [GitHub Issues](https://github.com/LixxRarin/Hashi-Character_AI-Discord/issues)
 
 <a href="https://files.catbox.moe/uwwd6m.png"><img src="https://files.catbox.moe/uwwd6m.png" alt="..." border="0"></a>
 
@@ -46,14 +46,16 @@ Project Hashi allows Character.AI personas to interact with users in your Discor
 - [x] Emoji filtering system
 - [x] Multi-bot instance support
 - [ ] DM interaction support
-- [ ] Add-ons/Plugins suport
+- [ ] Add-ons/Plugins support
+- [ ] Support for other AI APIs
 
 ### Discord Features
 - [X] Slash commands for: (More commands coming soon)
-  - `/character_info` - View character information
-  - `/restart` - If something goes wrong
   - `/setup` - configure and create a bot on the channel and character ID
+  - `/config` - Configure a specific AI (+15 commands!)
   - `/remove` - Remove a bot from the server 
+  - `/character_info` - View character information
+  - `/chat_id` - Create a new Character.IA bot chat
 
 ## 🛠️ Setup Guide
 
@@ -75,8 +77,8 @@ Project Hashi allows Character.AI personas to interact with users in your Discor
 ### Installation
 
 #### Windows Users
-1. Download latest release [here](https://github.com/LixxRarin/CharacterAI-Discord-Bridge/releases)
-2. Extract and Run `Bridge.exe`
+1. Download latest release [here](https://github.com/LixxRarin/Hashi-Character_AI-Discord/releases)
+2. Extract and Run `Hashi.exe`
 3. `config.yml` will auto-generate
 
 #### Linux/Source Users
@@ -85,8 +87,8 @@ Project Hashi allows Character.AI personas to interact with users in your Discor
 sudo apt update && sudo apt install python3.11
 
 # Clone repository
-git clone git@github.com:LixxRarin/CharacterAI-Discord-Bridge.git
-cd bridge
+git clone git@github.com:LixxRarin/Hashi-Character_AI-Discord.git
+cd hashi
 
 # Install dependencies 
 pip install -r requirements.txt
@@ -135,7 +137,7 @@ Never share your token with anyone!!!
 
 > The Channel field will be the channel where the Character.AI AI will receive and send messages.
 
-> You don't need to define a name or profile picture for your bot, Bridge does this automatically! (this is configurable)
+> You don't need to define a name or profile picture for your bot, Hashi does this automatically! (this is configurable)
 
 ## 🔄 Updating
 
@@ -144,7 +146,7 @@ Never share your token with anyone!!!
 1. **Windows**: Replace executable 
 2. **Source**: 
 ```bash
-# In the Bridge directory
+# In the Hashi directory
 git pull origin main
 pip install -r requirements.txt --upgrade
 ```

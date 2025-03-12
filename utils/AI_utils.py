@@ -5,10 +5,9 @@ from typing import Dict, Any, Optional, Set, List
 import aiohttp
 import discord
 
-import cai
-import utils
-import webhook
-from utils import update_session_data, get_session_data
+import AI.cai as cai
+import utils.func as func
+import commands.webhook as webhook
 
 
 class discord_AI_bot:
@@ -30,26 +29,26 @@ class discord_AI_bot:
         Args:
             client: The Discord client
         """
-        utils.log.info(
+        func.log.info(
             "Synchronizing webhook configurations with Character.AI")
         for server_id, server_info in webhook.session_data.items():
             for channel_id, session_data in server_info.get("channels", {}).items():
                 character_id = session_data.get("character_id")
                 if not character_id:
-                    utils.log.error(
+                    func.log.error(
                         "No character_id found for channel %s in server %s", channel_id, server_id)
                     continue
 
                 try:
                     info = await cai.get_bot_info(character_id=character_id)
                     if not info:
-                        utils.log.error(
+                        func.log.error(
                             "Failed to get bot info for character_id %s", character_id)
                         continue
-                    utils.log.debug(
+                    func.log.debug(
                         "Fetched bot info for character_id %s: %s", character_id, info["name"])
                 except Exception as e:
-                    utils.log.error(
+                    func.log.error(
                         "Failed to get bot info from C.AI for character_id %s: %s", character_id, e)
                     continue
 
@@ -62,10 +61,10 @@ class discord_AI_bot:
                             webhook_obj = discord.Webhook.from_url(
                                 webhook_url, session=http_session)
                             await webhook_obj.edit(name=info["name"], avatar=image_bytes, reason="Sync webhook info")
-                            utils.log.info(
+                            func.log.info(
                                 "Updated webhook for channel %s with new info from character_id %s", channel_id, character_id)
                     except Exception as e:
-                        utils.log.error(
+                        func.log.error(
                             "Failed to update webhook for channel %s: %s", channel_id, e)
 
     def time_typing(self, channel, user, client):
@@ -86,23 +85,23 @@ class discord_AI_bot:
             channel_id_str = str(channel.id)
 
             # Only process if session exists
-            if session := get_session_data(server_id, channel_id_str):
+            if session := func.get_session_data(server_id, channel_id_str):
                 current_time = time.time()
 
                 # Always update timestamp and persist
                 session["last_message_time"] = current_time
                 asyncio.create_task(
-                    utils.update_session_data(
+                    func.update_session_data(
                         server_id, channel_id_str, session)
                 )
 
-                utils.log.debug(
+                func.log.debug(
                     f"Typing activity from {user} in {channel.name}, "
                     f"session extended to {current_time}"
                 )
 
         except Exception as e:
-            utils.log.error(f"Typing handler error: {str(e)}", exc_info=True)
+            func.log.error(f"Typing handler error: {str(e)}", exc_info=True)
 
     async def read_channel_messages(self, message, client):
         """
@@ -124,14 +123,14 @@ class discord_AI_bot:
 
             # Get all channels that need to process this message
             channels_to_process = []
-            server_channels = utils.session_cache.get(
+            server_channels = func.session_cache.get(
                 server_id, {}).get("channels", {})
 
             for channel_id, session in server_channels.items():
                 if session:
                     channels_to_process.append(channel_id)
 
-            utils.log.info(
+            func.log.info(
                 f"Processing message for {len(channels_to_process)} channels in server {server_id}")
 
             # Process all channels concurrently
@@ -143,7 +142,7 @@ class discord_AI_bot:
             await asyncio.gather(*tasks)
 
         except Exception as e:
-            utils.log.error(f"Error in read_channel_messages: {e}")
+            func.log.error(f"Error in read_channel_messages: {e}")
 
     async def _process_channel_message(self, client, message, server_id, channel_id_str):
         """
@@ -166,16 +165,16 @@ class discord_AI_bot:
                 async with asyncio.timeout(5.0):
                     await self.channel_locks[channel_id_str].acquire()
             except asyncio.TimeoutError:
-                utils.log.warning(
+                func.log.warning(
                     f"Timeout acquiring lock for channel {channel_id_str}")
                 return
 
             try:
-                session = utils.get_session_data(server_id, channel_id_str)
+                session = func.get_session_data(server_id, channel_id_str)
                 if not session:
                     return
 
-                utils.log.debug(
+                func.log.debug(
                     "Processing message for channel %s: %s",
                     channel_id_str,
                     message.content[:50] if message.content else "No content"
@@ -186,17 +185,17 @@ class discord_AI_bot:
                     if message.reference:
                         try:
                             ref_message = await message.channel.fetch_message(message.reference.message_id)
-                            utils.capture_message(message, ref_message)
+                            func.capture_message(message, ref_message)
                         except Exception as e:
-                            utils.log.error(
+                            func.log.error(
                                 "Error fetching reference message: %s", e)
                     else:
-                        utils.capture_message(message)
+                        func.capture_message(message)
 
                 # Update session data
                 session["last_message_time"] = time.time()
                 session["awaiting_response"] = False
-                await utils.update_session_data(server_id, channel_id_str, session)
+                await func.update_session_data(server_id, channel_id_str, session)
 
                 # Create new task for AI response
                 # task_key = f"ai_response_{server_id}_{channel_id_str}"
@@ -208,7 +207,7 @@ class discord_AI_bot:
                 self.channel_locks[channel_id_str].release()
 
         except Exception as e:
-            utils.log.error(
+            func.log.error(
                 f"Error in _process_channel_message for channel {channel_id_str}: {e}")
             # Make sure to release the lock in case of error
             if channel_id_str in self.channel_locks and self.channel_locks[channel_id_str].locked():
@@ -229,7 +228,7 @@ class discord_AI_bot:
         # Skip if channel is already being processed
         channel_key = f"{server_id}_{channel_id_str}"
         if channel_key in self.processing_channels:
-            utils.log.debug(
+            func.log.debug(
                 f"Channel {channel_id_str} is already being processed, skipping")
             return
 
@@ -237,32 +236,32 @@ class discord_AI_bot:
         self.processing_channels.add(channel_key)
 
         try:
-            session = utils.get_session_data(server_id, channel_id_str)
+            session = func.get_session_data(server_id, channel_id_str)
 
             if not session:
-                utils.log.error(
+                func.log.error(
                     f"No session data for channel {channel_id_str} in server {server_id}")
                 return
 
             if not session.get("chat_id"):
-                create_new_chat = utils.config_yaml["Character_AI"].get(
+                create_new_chat = session["config"].get(
                     "new_chat_on_reset", False)
                 session["chat_id"], _ = await cai.new_chat_id(create_new_chat, session, server_id, channel_id_str)
-                await utils.update_session_data(server_id, channel_id_str, session)
+                await func.update_session_data(server_id, channel_id_str, session)
 
             session["awaiting_response"] = True
             session["last_message_time"] = time.time()
-            await utils.update_session_data(server_id, channel_id_str, session)
+            await func.update_session_data(server_id, channel_id_str, session)
 
             # Get cached messages for this channel
-            cached_data = await asyncio.to_thread(utils.read_json, "messages_cache.json") or {}
+            cached_data = await asyncio.to_thread(func.read_json, "messages_cache.json") or {}
 
             # Check if there are any messages to respond to
             if not cached_data.get(server_id, {}).get(channel_id_str, {}):
-                utils.log.info(
+                func.log.info(
                     "No cached messages for channel %s", channel_id_str)
                 session["awaiting_response"] = False
-                await utils.update_session_data(server_id, channel_id_str, session)
+                await func.update_session_data(server_id, channel_id_str, session)
                 self.processing_channels.discard(channel_key)
                 return
 
@@ -272,26 +271,31 @@ class discord_AI_bot:
 
             # Check if last_message_time has been updated during our wait
             # If it has, it means the user is still typing or sent another message
-            current_session = utils.get_session_data(server_id, channel_id_str)
+            current_session = func.get_session_data(server_id, channel_id_str)
             if current_session and current_session.get("last_message_time", 0) > session.get("last_message_time", 0):
-                utils.log.debug(
+                func.log.debug(
                     f"User still typing or sent new message in channel {channel_id_str}, delaying response")
                 self.processing_channels.discard(channel_key)
                 return
 
             # Queue response generation
-            utils.log.info(
+            func.log.info(
                 f"Queueing AI response for channel {channel_id_str} (character_id: {session['character_id']}, chat_id: {session['chat_id']})")
 
             async def handle_response(response):
+
                 try:
+
+                    session = func.get_session_data(server_id, channel_id_str)
+
+                    # func.log.debug(f"Session data: {session}")
                     # Process the response
-                    if utils.config_yaml["MessageFormatting"]["remove_emojis"]["AI"]:
-                        response = utils.remove_emoji(response)
+                    if session["config"]["remove_ai_emoji"]:
+                        response = func.remove_emoji(response)
 
                     # Check if the response is empty or just whitespace
                     if not response or response.isspace():
-                        utils.log.warning(
+                        func.log.warning(
                             f"Received empty response from AI for channel {channel_id_str}")
                         response = "I'm sorry, but I don't have a response at the moment. Could you please try again?"
 
@@ -299,61 +303,63 @@ class discord_AI_bot:
                     webhook_url = session.get("webhook_url")
                     if webhook_url:
                         # Send message immediately without typing simulation
-                        await webhook.webhook_send(webhook_url, response)
-                        utils.log.info(
+                        await webhook.webhook_send(webhook_url, response, session)
+                        func.log.info(
                             f"Sent AI response via webhook for channel {channel_id_str}")
 
                         # Clear the processed messages from cache
-                        await utils.remove_sent_messages_from_cache(server_id, channel_id_str)
+                        await func.remove_sent_messages_from_cache(server_id, channel_id_str)
                     else:
-                        utils.log.error(
+                        func.log.error(
                             f"Webhook URL not found for channel {channel_id_str}")
 
                     # Update the session
-                    current_session = utils.get_session_data(
+                    current_session = func.get_session_data(
                         server_id, channel_id_str)
                     if current_session:
                         current_session["awaiting_response"] = False
                         current_session["last_message_time"] = time.time()
-                        await utils.update_session_data(server_id, channel_id_str, current_session)
+                        await func.update_session_data(server_id, channel_id_str, current_session)
 
                 except Exception as e:
-                    utils.log.error(f"Error in response handler: {e}")
+                    func.log.error(
+                        f"Error in response handler: {e}")
                 finally:
                     # Mark the channel as no longer being processed
                     self.processing_channels.discard(channel_key)
 
             # Queue the response with a timeout
-            try:
-                # Set a timeout for the queue operation
-                # 10 second timeout for queueing
-                async with asyncio.timeout(10.0):
-                    await cai.queue_response(
-                        server_id,
-                        channel_id_str,
-                        message,
-                        session["chat_id"],
-                        session["character_id"],
-                        handle_response
-                    )
-            except asyncio.TimeoutError:
-                utils.log.error(
-                    f"Timeout queueing response for channel {channel_id_str}")
-                self.processing_channels.discard(channel_key)
-                session["awaiting_response"] = False
-                await utils.update_session_data(server_id, channel_id_str, session)
+            async with message.channel.typing():
+                try:
+                    # Set a timeout for the queue operation
+                    # 10 second timeout for queueing
+                    async with asyncio.timeout(10.0):
+                        await cai.queue_response(
+                            server_id,
+                            channel_id_str,
+                            message,
+                            session["chat_id"],
+                            session["character_id"],
+                            handle_response
+                        )
+                except asyncio.TimeoutError:
+                    func.log.error(
+                        f"Timeout queueing response for channel {channel_id_str}")
+                    self.processing_channels.discard(channel_key)
+                    session["awaiting_response"] = False
+                    await func.update_session_data(server_id, channel_id_str, session)
 
         except Exception as e:
-            utils.log.error(
+            func.log.error(
                 "Error in AI_send_message for channel %s: %s", channel_id_str, e)
             # Mark channel as no longer being processed
             self.processing_channels.discard(channel_key)
 
             # Update session
-            session = utils.get_session_data(server_id, channel_id_str)
+            session = func.get_session_data(server_id, channel_id_str)
             if session:
                 session["awaiting_response"] = False
-                await utils.update_session_data(server_id, channel_id_str, session)
+                await func.update_session_data(server_id, channel_id_str, session)
 
     async def monitor_inactivity(self, client, message):
         """
@@ -373,7 +379,7 @@ class discord_AI_bot:
         channel_id_str = str(message.channel.id)
 
         # Get the session for this channel
-        session = get_session_data(server_id, channel_id_str)
+        session = func.get_session_data(server_id, channel_id_str)
 
         if not session:
             return
@@ -408,11 +414,12 @@ class discord_AI_bot:
                 await asyncio.sleep(0.5)
 
                 # Reload session data to get latest status
-                current_session = get_session_data(server_id, channel_id_str)
+                current_session = func.get_session_data(
+                    server_id, channel_id_str)
 
                 # Skip if session no longer exists
                 if not current_session:
-                    utils.log.debug(
+                    func.log.debug(
                         "Session no longer exists for channel %s, stopping monitor", channel_id_str)
                     break
 
@@ -426,17 +433,16 @@ class discord_AI_bot:
                     continue
 
                 # Check for inactivity or message threshold
-                cached_data = await asyncio.to_thread(utils.read_json, "messages_cache.json") or {}
+                cached_data = await asyncio.to_thread(func.read_json, "messages_cache.json") or {}
                 channel_messages = cached_data.get(
                     server_id, {}).get(channel_id_str, {})
                 cache_count = len(channel_messages)
 
                 time_since_last = time.time() - current_session.get("last_message_time", 0)
-                delay = utils.config_yaml.get(
-                    "Options", {}).get("delay_for_generation", 5)
+                delay = session["config"].get("delay_for_generation", 5)
 
                 if ((time_since_last >= delay or cache_count >= 5) and cache_count > 0):
-                    utils.log.debug(
+                    func.log.debug(
                         "Inactivity detected for channel %s (%d seconds, %d messages). Triggering AI response.",
                         channel_id_str, time_since_last, cache_count
                     )
@@ -458,8 +464,8 @@ class discord_AI_bot:
                     # Wait for the response to complete
                     await asyncio.sleep(5)
         except asyncio.CancelledError:
-            utils.log.debug(
+            func.log.debug(
                 "Monitor task for channel %s was cancelled", channel_id_str)
         except Exception as e:
-            utils.log.error(
+            func.log.error(
                 "Error in monitor_inactivity for channel %s: %s", channel_id_str, e)

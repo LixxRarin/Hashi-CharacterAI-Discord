@@ -4,7 +4,7 @@ from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap
 from packaging import version
 
-import utils
+import utils.func as func
 
 # Set up ruamel.yaml in round-trip mode (preserves order and comments)
 yaml = YAML(typ='rt')
@@ -12,19 +12,13 @@ yaml.preserve_quotes = True
 yaml.encoding = "utf-8"
 
 # Default configuration content
-DEFAULT_CONFIG_CONTENT = r"""version: "1.1.2" # Don't touch here
+DEFAULT_CONFIG_CONTENT = r"""version: "1.1.4" # Don't touch here
 
 # Discord Bot Configuration
 Discord:
   token: "YOUR_DISCORD_BOT_TOKEN"
   # This is the token used to authenticate your bot with Discord.
   # Keep this token secure and do not share it publicly.
-
-  use_cai_avatar: true  # Whether to use the Character.AI profile picture for the all webhooks.
-  # If set to true, the webhook will display the avatar from Character.AI.
-
-  use_cai_display_name: true  # Whether to use the Character.AI display name for the all webhooks.
-  # If true, the bot's name will be replaced by the display name of the Character.AI character.
 
   messages_cache: "messages_cache.json"  # Path to the file where messages are cached.
   # This file stores the chat history for the bot.
@@ -36,22 +30,6 @@ Character_AI:
   token: "YOUR_CHARACTER_AI_TOKEN"
   # This is the token for authenticating your bot with Character.AI.
   # Like the Discord token, keep this token private and do not share it.
-
-  new_chat_on_reset: false  # Whether to create a new chat session when resetting.
-  # If set to true, a new chat session will be created each time the bot is reset.
-  # If set to false, the bot will continue the current chat session after a reset.
-
-  system_message: >
-    [DO NOT RESPOND TO THIS MESSAGE!]
-
-    You are connected to a Discord channel, 
-    where several people may be present. Your objective is to interact with them in the chat.
-
-    Greet the participants and introduce yourself by fully translating your message into English.
-
-    Now, send your message introducing yourself in the chat, following the language of this message!
-  # A system message is the first message that will be sent to your character
-  # Use 'system_message: null' to not use a system message
 
 # Bot Interaction Settings
 Options:
@@ -67,57 +45,10 @@ Options:
   repo_branch: "main" 
   # This is the branch where the program will check and update.
   # Only touch this if you know what you're doing here!
-  
-  send_the_greeting_message: true
-  # Send the character first greeting message
-
-  send_the_system_message_reply: true
-  # Send the character reply to the system message
-  # This is ignored if the system message is null
-
-  send_message_line_by_line: true  # Whether to send bot messages one line at a time.
-  # If true, the bot will send each message in the chat as separate lines, rather than sending everything at once.
-  # This can make the interaction feel more natural or less overwhelming.
-
-  delay_for_generation: 5 # In seconds
-  # This is the delay the bot will wait before generating a response
-  # When a message is sent, it will wait for this time (a longer delay can be useful to capture multiple messages at once)
-  # If a user starts typing while the timer is counting down, the timer will be reset and start again
-  # Use 0 for instant response
 
   debug_mode: false  # Enable debug mode for troubleshooting.
   # When true, the bot will log detailed information about its processes in the console, which is helpful for debugging.
   # This mode should be off in production to avoid excessive logging.
-
-# Message Formatting Rules
-MessageFormatting:
-  remove_IA_text_from: ['\*[^*]*\*', '\[[^\]]*\]', '"']
-  remove_user_text_from: ['\*[^*]*\*', '\[[^\]]*\]']
-  # Remove certain patterns from the AI and user messages.
-  # This removes text enclosed in asterisks (often used for emphasis or actions),
-  # any text in square brackets (often for OOC), and any quotation marks.
-  # Adjust these patterns as needed based on the format of your messages.
-
-  remove_emojis:
-    user: false
-    AI: false
-  # Whether to remove emojis from user or/and AI messages.
-  # If set to true, emojis will be stripped from user messages before they are processed.
-  # Setting to false keeps emojis in the conversation.
-
-  user_reply_format_syntax: |
-    ┌──[🔁 Replying to @{reply_username} - {reply_name}]
-    │   ├─ 📝 Reply: {reply_message}
-    │   └─ ⏳ {time} ~ @{username} - {name}
-    |   └─ 📢 Message: {message}
-    └───────────────────────────────────────
-  user_format_syntax: |
-    ┌──[💬]
-    │   ├─ ⏳ {time} ~ @{username} - {name}
-    │   └─ 📢 Message: {message}
-    └───────────────────────────────────────
-  # This is the syntax that messages will be sent from the Discord channel to the Character.AI character
-  # Modify it to your advantage
 """
 
 
@@ -184,7 +115,7 @@ class ConfigManager:
                 return yaml.load(f)
         except Exception as e:
             # Log error if loading the configuration fails
-            utils.log.error("Error loading user configuration: %s", e)
+            func.log.error("Error loading user configuration: %s", e)
             return None
 
     def is_version_outdated(self):
@@ -202,7 +133,7 @@ class ConfigManager:
         default_version = self.default_config.get("version")
         if user_version is None:
             # Log a warning if no version is found in the user configuration
-            utils.log.warning(
+            func.log.warning(
                 "No version found in user configuration. Assuming outdated.")
             return True
         return version.parse(user_version) < version.parse(default_version)
@@ -233,30 +164,30 @@ class ConfigManager:
           - Logs all actions including successes, warnings, and errors.
         """
         if self.user_config is None:
-            utils.log.warning(
+            func.log.warning(
                 "Configuration file '%s' not found. Creating a new one...", self.config_file)
             try:
                 with open(self.config_file, "w", encoding="utf-8") as f:
                     yaml.dump(self.default_config, f)
-                utils.log.info(
+                func.log.info(
                     "Configuration file '%s' created successfully!", self.config_file)
             except Exception as e:
-                utils.log.critical(
+                func.log.critical(
                     "Failed to create configuration file: %s", e)
             return
 
         if self.is_version_outdated():
-            utils.log.warning("Updating configuration '%s' to version %s",
-                              self.config_file, self.default_config.get("version"))
+            func.log.warning("Updating configuration '%s' to version %s",
+                             self.config_file, self.default_config.get("version"))
             updated_config = self.merge_configs()
             try:
                 with open(self.config_file, "w", encoding="utf-8") as f:
                     yaml.dump(updated_config, f)
-                utils.log.info(
+                func.log.info(
                     "Configuration file '%s' updated successfully!", self.config_file)
             except Exception as e:
-                utils.log.critical(
+                func.log.critical(
                     "Failed to update configuration file: %s", e)
         else:
-            utils.log.info(
+            func.log.info(
                 "Configuration file '%s' is up-to-date.", self.config_file)

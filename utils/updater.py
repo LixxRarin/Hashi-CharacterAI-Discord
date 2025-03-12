@@ -12,12 +12,12 @@ import requests
 from colorama import Fore, init, Style
 from packaging import version
 
-import utils
-from config_updater import ConfigManager
+import utils.func as func
+from utils.config_updater import ConfigManager
 
 if not os.path.exists("version.txt"):
     with open("version.txt", "w") as file:
-        file.write("1.0.9\n")
+        file.write("1.1.0\n")
 
 if not os.path.exists("cache.json"):
     with open("cache.json", "w") as file:
@@ -44,30 +44,31 @@ class AutoUpdater:
         self.repo_owner, self.repo_name = self._extract_repo_info(repo_url)
         self.base_url = f"https://api.github.com/repos/{self.repo_owner}/{self.repo_name}"
         self.headers = {'Accept': 'application/vnd.github.v3+json'}
+        self.exe_name = "Hashi.exe"
         self.exe_path = Path(sys.executable).resolve() if self.is_exe else None
         self.script_dir = Path(__file__).parent.resolve()
 
     def check_and_update(self):
         if os.environ.get("SKIP_AUTOUPDATE") == "1":
-            utils.log.info(
+            func.log.info(
                 "Skipping update check to avoid infinite restart loop.")
             return
 
         if self.is_exe:
             latest_release = self._get_latest_release()
             if latest_release and version.parse(latest_release['tag_name']) > version.parse(self.current_version):
-                utils.log.info("New executable version detected. Updating...")
+                func.log.info("New executable version detected. Updating...")
                 self._update_exe(latest_release)
             else:
-                utils.log.info("No executable updates available.")
+                func.log.info("No executable updates available.")
         else:
             if self._update_from_commit():
-                utils.log.info("Source update applied; restarting program.")
+                func.log.info("Source update applied; restarting program.")
                 self._restart_program()
 
     def _extract_repo_info(self, repo_url):
         match = re.match(
-            r"(?:git@github\.com:|https:\/\/github\.com\/)([\w-]+)/([\w-]+)(?:\.git)?", repo_url)
+            r"(?:git@github\.com:|https://github\.com/)([\w-]+)/([\w-]+)(?:\.git)?", repo_url)
         if not match:
             raise ValueError("Invalid repository URL")
         return match.group(1), match.group(2)
@@ -79,70 +80,65 @@ class AutoUpdater:
             if response.status_code == 200:
                 return response.json()
             else:
-                utils.log.error(
+                func.log.error(
                     "Failed to fetch latest release: Status code %s", response.status_code)
                 return None
         except Exception as e:
-            utils.log.error("Error fetching release: %s", e)
+            func.log.error("Error fetching release: %s", e)
             return None
 
     def _update_exe(self, release_data):
-        utils.log.info("New update found, downloading...")
+        func.log.info("New update found, downloading...")
 
         new_version = release_data.get('tag_name', self.current_version)
-        # Try to find an .exe asset first
         asset = next((a for a in release_data.get('assets', [])
                      if a.get('name', '').endswith('.exe')), None)
+
         if asset is None:
-            # If no .exe asset, try to find a .zip asset
             asset = next((a for a in release_data.get('assets', [])
                          if a.get('name', '').endswith('.zip')), None)
             if asset:
-                utils.log.info(
+                func.log.info(
                     "Zip asset found for update, processing zip file...")
                 try:
-                    download_url = asset['browser_download_url']
-                    zip_content = requests.get(download_url).content
-                    zip_file = zipfile.ZipFile(BytesIO(zip_content))
-                    exe_filename = None
-                    for file in zip_file.namelist():
-                        if file.endswith('.exe'):
-                            exe_filename = file
-                            break
-                    if exe_filename is None:
-                        utils.log.error(
-                            "No .exe file found in the zip archive.")
-                        return
-                    new_exe_content = zip_file.read(exe_filename)
-                    self._apply_update(new_exe_content, new_version)
+                    self._download_with_progress(
+                        asset['browser_download_url'], new_version, zip_mode=True)
                 except Exception as e:
-                    utils.log.error("Update via zip failed: %s", e)
+                    func.log.error("Update via zip failed: %s", e)
                 return
             else:
-                utils.log.error(
+                func.log.error(
                     "No suitable asset found for update (neither .exe nor .zip)")
                 return
         try:
-            download_url = asset['browser_download_url']
-            new_exe_content = requests.get(download_url).content
-            self._apply_update(new_exe_content, new_version)
+            self._download_with_progress(
+                asset['browser_download_url'], new_version)
         except Exception as e:
-            utils.log.error("Executable update failed: %s", e)
+            func.log.error("Executable update failed: %s", e)
 
-    def _apply_update(self, new_exe_content, new_version):
-        """
-        Saves the new executable content to a temporary file and creates an update batch script
-        that replaces the current executable with the new one and updates version.txt.
-        """
-        utils.log.info("Switching to the latest executable file...")
-        temp_exe = self.exe_path.parent / "Bridge_new.exe"
+    def _download_with_progress(self, url, new_version, zip_mode=False):
+        response = requests.get(url, stream=True)
+        total_size = int(response.headers.get('content-length', 0))
+        downloaded_size = 0
+        temp_exe = self.exe_path.parent / "Hashi_new.exe"
+
         try:
             with open(temp_exe, "wb") as f:
-                f.write(new_exe_content)
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+                        downloaded_size += len(chunk)
+                        percent = (downloaded_size / total_size) * 100
+                        print(f"Download progress: {percent:.2f}%", end="\r")
         except Exception as e:
-            utils.log.error("Failed to write temporary executable file: %s", e)
+            func.log.error("Failed to write new executable: %s", e)
             return
 
+        if not zip_mode:
+            self._apply_update(temp_exe, new_version)
+
+    def _apply_update(self, temp_exe, new_version):
+        func.log.info("Switching to the latest executable file...")
         version_file = self.exe_path.parent / "version.txt"
         update_script = f"""@echo off
 timeout /t 3 /nobreak >nul
@@ -151,48 +147,34 @@ move /Y "{temp_exe}" "{self.exe_path}"
 echo {new_version} > "{version_file}"
 start "" "{self.exe_path}"
 exit
-    """
+"""
         try:
             with open("update.bat", "w", encoding="utf-8") as f:
                 f.write(update_script)
-            # Launch update.bat in a new console window
             subprocess.Popen(["update.bat"], shell=True,
                              creationflags=subprocess.CREATE_NEW_CONSOLE)
             sys.exit(0)
         except Exception as e:
-            utils.log.error("Failed to execute update script: %s", e)
+            func.log.error("Failed to execute update script: %s", e)
 
     def _update_from_commit(self):
         try:
             if (self.script_dir / '.git').exists():
-                status = subprocess.run(
-                    ['git', 'status', '--porcelain'], capture_output=True, text=True, cwd=self.script_dir)
-                if status.stdout.strip():
-                    utils.log.warning(
-                        "There are uncommitted local changes. Consider committing or discarding them.")
                 subprocess.run(['git', 'fetch', 'origin',
                                self.branch], check=True, cwd=self.script_dir)
                 subprocess.run(
                     ['git', 'reset', '--hard', f'origin/{self.branch}'], check=True, cwd=self.script_dir)
-                utils.log.info(
-                    "Code updated via Git (branch: %s)", self.branch)
-                return True
-            else:
-                from selfupdate import update
-                update()
-                utils.log.info("Code updated via selfupdate library.")
+                func.log.info("Code updated via Git (branch: %s)", self.branch)
                 return True
         except Exception as e:
-            utils.log.error("Source update failed: %s", e)
+            func.log.error("Source update failed: %s", e)
             return False
 
     def _restart_program(self):
         new_env = os.environ.copy()
         new_env["SKIP_AUTOUPDATE"] = "1"
-        if self.is_exe:
-            subprocess.Popen([str(self.exe_path)], env=new_env)
-        else:
-            subprocess.Popen([sys.executable] + sys.argv, env=new_env)
+        subprocess.Popen([str(self.exe_path)], env=new_env) if self.is_exe else subprocess.Popen(
+            [sys.executable] + sys.argv, env=new_env)
         sys.exit(0)
 
     @staticmethod
@@ -228,12 +210,12 @@ async def boot():
 
     # Initialize AutoUpdater using configuration data
     updater = AutoUpdater(
-        repo_url=utils.config_yaml["Options"]["repo_url"],
+        repo_url=func.config_yaml["Options"]["repo_url"],
         current_version=return_version(),
-        branch=utils.config_yaml["Options"].get("repo_branch", "main")
+        branch=func.config_yaml["Options"].get("repo_branch", "main")
     )
 
-    if utils.config_yaml["Options"].get("auto_update", False):
+    if func.config_yaml["Options"].get("auto_update", False):
         updater.check_and_update()
 
 asyncio.run(boot())
