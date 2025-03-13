@@ -119,6 +119,12 @@ class discord_AI_bot:
             if message.content.startswith(("#", "//")):
                 return
 
+            session = func.get_session_data(
+                str(message.guild.id), str(message.channel.id))
+
+            if message.author.id in session["muted_users"]:
+                return
+
             server_id = str(message.guild.id)
 
             # Get all channels that need to process this message

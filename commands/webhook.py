@@ -253,6 +253,7 @@ class WebHook(commands.Cog):
                 "setup_has_already": False,
                 "last_message_time": time.time(),
                 "awaiting_response": False,
+                "muted_users": [],
                 "config": {
                     "use_cai_avatar": True,
                     "use_cai_display_name": True,

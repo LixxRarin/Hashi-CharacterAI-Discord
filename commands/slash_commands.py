@@ -243,10 +243,10 @@ class SlashCommands(commands.Cog):
             str(to_channel.guild.id), str(to_channel.id))
 
         if from_channel_session is None:
-            await interaction.response.send_message(f"No configured AI found in {from_channel.mention}, try `/setup`.", ephemeral=True)
+            await interaction.response.send_message(f"⚠️ No configured AI found in {from_channel.mention}, try `/setup`.", ephemeral=True)
             return
         if to_channel_session is None:
-            await interaction.response.send_message(f"No configured AI found in {to_channel.mention}, try `/setup`.", ephemeral=True)
+            await interaction.response.send_message(f"⚠️ No configured AI found in {to_channel.mention}, try `/setup`.", ephemeral=True)
             return
 
         to_channel_session["config"] = from_channel_session["config"]
@@ -256,18 +256,17 @@ class SlashCommands(commands.Cog):
 
         await interaction.response.send_message(f"Settings successfully copied from {from_channel} to {to_channel}!", ephemeral=True)
 
-    @app_commands.command(name="show_config", description="Display all configuration settings for a specific channel.")
+    @app_commands.command(name="show_config", description="Display all AI configuration settings for a specific channel.")
     async def show_config(self, interaction: discord.Interaction, channel: discord.TextChannel):
         """
         Retrieves and displays all configuration settings from session.json for a given channel.
         """
         # Load session data
-        session_data = func.read_json("session.json")
+        session = func.get_session_data(str(channel.guild.id), str(channel.id))
 
         try:
             # Get channel-specific configuration
-            channel_config = session_data[str(
-                channel.guild.id)]["channels"][str(channel.id)]["config"]
+            channel_config = session["config"]
         except KeyError:
             func.log.warning(
                 f"No configuration found for channel: {channel.id}")
@@ -284,7 +283,56 @@ class SlashCommands(commands.Cog):
             embed.add_field(name=key, value=str(value), inline=False)
 
         # Send the configuration summary
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.response.send_message(embed=embed, ephemeral=False)
+
+    @app_commands.command(name="mute", description="Mute a user so the AI does not capture their messages")
+    @app_commands.default_permissions(administrator=True)
+    async def mute(self, interaction: discord.Interaction, channel: discord.TextChannel, user: discord.Member):
+
+        session = func.get_session_data(str(channel.guild.id), str(channel.id))
+
+        if user.id not in session["muted_users"]:
+            session["muted_users"].append(user.id)
+            await interaction.response.send_message(f"{user.mention} has been muted.", ephemeral=True)
+        else:
+            await interaction.response.send_message(f"{user.mention} is already muted.", ephemeral=True)
+
+        await func.update_session_data(str(channel.guild.id), str(channel.id), session)
+
+    @app_commands.command(name="unmute", description="Unmute a user so the AI captures their messages")
+    @app_commands.default_permissions(administrator=True)
+    async def unmute(self, interaction: discord.Interaction, channel: discord.TextChannel, user: discord.Member):
+
+        session = func.get_session_data(str(channel.guild.id), str(channel.id))
+
+        if user.id in session["muted_users"]:
+            # Remove o ID da lista de mutados
+            session["muted_users"].remove(user.id)
+            await interaction.response.send_message(f"{user.mention} has been unmuted.", ephemeral=True)
+        else:
+            await interaction.response.send_message(f"{user.mention} is not muted.", ephemeral=True)
+
+        await func.update_session_data(str(channel.guild.id), str(channel.id), session)
+
+    @app_commands.command(name="list_muted", description="List all muted users in a channel")
+    @app_commands.default_permissions(administrator=True)
+    async def list_muted(self, interaction: discord.Interaction, channel: discord.TextChannel):
+
+        # Retrieve session data for the given guild and channel
+        session = func.get_session_data(str(channel.guild.id), str(channel.id))
+        muted_users = session.get("muted_users", [])
+
+        if not muted_users:
+            # If there are no muted users, inform the admin
+            await interaction.response.send_message("No users are currently muted.", ephemeral=True)
+            return
+
+        # Get user mentions for all muted user IDs
+        mentions = [f"<@{user_id}>" for user_id in muted_users]
+        muted_list = "\n".join(mentions)
+
+        # Send the list of muted users
+        await interaction.response.send_message(f"Muted users in {channel.mention}:\n{muted_list}", ephemeral=True)
 
 
 async def setup(bot):
