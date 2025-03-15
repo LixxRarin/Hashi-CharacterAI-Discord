@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import sys
@@ -7,6 +8,7 @@ import asyncio
 import subprocess
 from io import BytesIO
 from pathlib import Path
+from typing import Dict, Any
 
 import requests
 from colorama import Fore, init, Style
@@ -21,6 +23,121 @@ if not os.path.exists("version.txt"):
 
 # Initialize colorama for cross-platform colored output
 init(autoreset=True)
+
+
+def sync_dict(current, default):
+    """
+    Recursively synchronize the current dictionary with the default model.
+    - Adds keys missing in current using the default value.
+    - Keeps keys that already exist.
+    - Removes keys not defined in the default model.
+    """
+    new_dict = {}
+    for key, default_value in default.items():
+        if key in current:
+            # If both values are dictionaries, update recursively
+            if isinstance(default_value, dict) and isinstance(current[key], dict):
+                new_dict[key] = sync_dict(current[key], default_value)
+            else:
+                new_dict[key] = current[key]
+        else:
+            # If the default value is callable (like lambda for time), call it
+            new_dict[key] = default_value() if callable(
+                default_value) else default_value
+    return new_dict
+
+
+def update_session_file(file_path="session.json"):
+    """
+    Update the session.json file:
+    - Only update existing servers/channels.
+    - For each channel, add missing keys (with default values) and remove extra keys.
+    - If a channel's data is null, remove that channel entry.
+    """
+    # Default model for channel configuration.
+    default_channel_model = {
+        "channel_name": "default_channel_name",  # Placeholder for channel.name
+        "character_id": "default_character_id",  # Placeholder for character_id
+        "webhook_url": "default_webhook_url",      # Placeholder for WB_url
+        "chat_id": None,
+        "setup_has_already": False,
+        "last_message_time": lambda: time.time(),
+        "awaiting_response": False,
+        "alt_token": None,
+        "muted_users": [],
+        "config": {
+            "use_cai_avatar": True,
+            "use_cai_display_name": True,
+            "new_chat_on_reset": False,
+            "system_message": """[DO NOT RESPOND TO THIS MESSAGE!]
+You are connected to a Discord channel, where several people may be present. Your objective is to interact with them in the chat.
+Greet the participants and introduce yourself by fully translating your message into English.
+Now, send your message introducing yourself in the chat, following the language of this message!""",
+            "send_the_greeting_message": True,
+            "send_the_system_message_reply": True,
+            "send_message_line_by_line": True,
+            "delay_for_generation": 5,
+            "remove_ai_text_from": [r'\*[^*]*\*', r'\[[^\]]*\]', '"'],
+            "remove_user_text_from": [r'\*[^*]*\*', r'\[[^\]]*\]'],
+            "remove_user_emoji": True,
+            "remove_ai_emoji": True,
+            "user_reply_format_syntax": """┌──[🔁 Replying to @{reply_username} - {reply_name}]
+│   ├─ 📝 Reply: {reply_message}
+│   └─ ⏳ {time} ~ @{username} - {name}
+|   └─ 📢 Message: {message}
+└───────────────────────────────────────""",
+            "user_format_syntax": """┌──[💬]
+│   ├─ ⏳ {time} ~ @{username} - {name}
+│   └─ 📢 Message: {message}
+└───────────────────────────────────────"""
+        }
+    }
+
+    # Check if the session file exists; if not, create an empty session data dictionary
+    if not os.path.exists(file_path):
+        func.log.info(
+            f"Session file '{file_path}' does not exist. Creating a new file.")
+        session_data = {}
+    else:
+        # Load existing session data
+        with open(file_path, "r", encoding="utf-8") as f:
+            try:
+                session_data = json.load(f)
+            except json.JSONDecodeError:
+                func.log.warning(
+                    "Error: JSON file is not properly formatted. Creating a new empty session data.")
+                session_data = {}
+
+    # Iterate over each server in the session data
+    for server_id, server_data in session_data.items():
+        func.log.debug(f"Processing server: {server_id}")
+        # Only update if the server has a 'channels' key
+        if "channels" in server_data:
+            channels = server_data["channels"]
+            # List of channels to remove if their data is None
+            channels_to_remove = []
+            for channel_id, channel_data in channels.items():
+                # If channel data is null, mark it for removal
+                if channel_data is None:
+                    print(
+                        f"Channel {channel_id} has null data. It will be removed.")
+                    channels_to_remove.append(channel_id)
+                else:
+                    func.log.debug(f"Processing channel: {channel_id}")
+                    channels[channel_id] = sync_dict(
+                        channel_data, default_channel_model)
+            # Remove channels that had null data
+            for channel_id in channels_to_remove:
+                del channels[channel_id]
+        else:
+            func.log.debug(
+                f"No channels found for server: {server_id}. Skipping update for this server.")
+
+    # Write the updated session data back to the JSON file
+    with open(file_path, "w", encoding="utf-8") as f:
+        json.dump(session_data, f, indent=4, ensure_ascii=False)
+
+    print("Session file updated successfully.")
 
 
 class AutoUpdater:
@@ -199,6 +316,7 @@ def startup_screen():
 
 async def boot():
     startup_screen()
+    update_session_file()
 
     # Manage and update the configuration file
     config_manager = ConfigManager()

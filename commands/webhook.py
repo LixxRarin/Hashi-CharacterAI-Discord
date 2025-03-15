@@ -253,6 +253,7 @@ class WebHook(commands.Cog):
                 "setup_has_already": False,
                 "last_message_time": time.time(),
                 "awaiting_response": False,
+                "alt_token": None,
                 "muted_users": [],
                 "config": {
                     "use_cai_avatar": True,
@@ -281,6 +282,7 @@ Now, send your message introducing yourself in the chat, following the language 
 └───────────────────────────────────────"""
                 }
             }
+
             await func.update_session_data(server_id, channel_id_str, new_session_data)
 
             # Initialize session messages

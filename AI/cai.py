@@ -21,6 +21,13 @@ active_response_tasks: Dict[str, asyncio.Task] = {}
 api_semaphore = asyncio.Semaphore(3)  # Allow up to 3 concurrent API calls
 
 
+def current_token(session):
+    if session["alt_token"]:
+        return session["alt_token"]
+    else:
+        return func.config_yaml["Character_AI"]["token"]
+
+
 async def retry_with_backoff(func: Callable[[], Awaitable[T]], max_retries: int = 3,
                              base_delay: float = 1) -> T:
     """
@@ -121,7 +128,7 @@ async def new_chat_id(create_new: bool, session: Dict[str, Any],
     # If we need to create a new chat (either forced or no existing chat_id)
     try:
         async with api_semaphore:
-            client = await get_client(token=func.config_yaml["Character_AI"]["token"])
+            client = await get_client(token=current_token(session))
             chat, greeting_message_obj = await client.chat.create_chat(character_id)
             func.log.info("New Chat ID created for channel %s: %s",
                           channel_id_str, chat.chat_id)
@@ -180,7 +187,7 @@ async def initialize_session_messages(session: Dict[str, Any], server_id: str,
 
     try:
         async with api_semaphore:
-            client = await get_client(token=func.config_yaml["Character_AI"]["token"])
+            client = await get_client(token=current_token(session))
             chat = await client.chat.fetch_chat(chat_id)
 
             if greeting_obj is not None and session["config"].get("send_the_greeting_message"):
@@ -198,7 +205,7 @@ async def initialize_session_messages(session: Dict[str, Any], server_id: str,
     if session["config"].get("send_the_system_message_reply", True) and session["config"].get("system_message", None) is not None:
         try:
             async with api_semaphore:
-                client = await get_client(token=func.config_yaml["Character_AI"]["token"])
+                client = await get_client(token=current_token(session))
                 system_reply_obj = await client.chat.send_message(
                     character_id, chat.chat_id, session["config"]["system_message"]
                 )
@@ -250,7 +257,7 @@ async def cai_response(messages: Dict[str, Any], message,
             f"Initializing Character.AI client for character_id: {character_id}, chat_id: {chat_id}")
 
         async with api_semaphore:
-            client = await get_client(token=func.config_yaml["Character_AI"]["token"])
+            client = await get_client(token=current_token(session))
 
             async def try_generate():
                 nonlocal client
@@ -296,7 +303,7 @@ async def cai_response(messages: Dict[str, Any], message,
         try:
             async with api_semaphore:
                 if client is None:
-                    client = await get_client(token=func.config_yaml["Character_AI"]["token"])
+                    client = await get_client(token=current_token())
                 new_chat, _ = await client.chat.create_chat(character_id)
                 chat_id = new_chat.chat_id
                 func.log.info(f"New chat created with ID: {chat_id}")

@@ -5,7 +5,7 @@ from discord import app_commands
 from discord.ext import commands
 
 import utils.func as func
-from AI.cai import get_bot_info
+from AI.cai import get_bot_info, get_client
 
 
 class SlashCommands(commands.Cog):
@@ -333,6 +333,35 @@ class SlashCommands(commands.Cog):
 
         # Send the list of muted users
         await interaction.response.send_message(f"Muted users in {channel.mention}:\n{muted_list}", ephemeral=True)
+
+    @app_commands.command(name="token", description="Use an alternative token for a channel. The host can see your token, so be careful.!")
+    @app_commands.default_permissions(administrator=True)
+    async def token(self, interaction: discord.Interaction, channel: discord.TextChannel, token: str):
+
+        if func.config_yaml["Options"]["enable_alternative_cai_token"]:
+
+            session = func.get_session_data(
+                str(channel.guild.id), str(channel.id))
+
+            try:
+                client = await get_client(token)
+            except Exception as e:
+                await interaction.response.send_message(f"An error occurred when capturing the token. Error: {e}\nCheck that the token is correct.", ephemeral=True)
+                return
+
+            # Set the alternative token or clear it if the user inputs "none"
+            session["alt_token"] = None if token.lower() == "none" else token
+
+            # Update session data
+            await func.update_session_data(str(channel.guild.id), str(channel.id), session)
+
+            # Confirmation message
+            if session["alt_token"] is None:
+                await interaction.response.send_message("The alternative token has been cleared.", ephemeral=True)
+            else:
+                await interaction.response.send_message("The alternative token has been set successfully. Remember to change the chat ID with '/chat_id'.", ephemeral=True)
+        else:
+            await interaction.response.send_message("This bot does not allow the use of alternative tokens.", ephemeral=True)
 
 
 async def setup(bot):
