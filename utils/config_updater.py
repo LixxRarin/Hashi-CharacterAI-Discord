@@ -46,6 +46,11 @@ Options:
   # This is the branch where the program will check and update.
   # Only touch this if you know what you're doing here!
 
+  enable_alternative_cai_token: false
+  # 'true' if you want users to be able to use their alternative Character.AI tokens in their IAs.
+  # This is useful if you don't want user tokens to be stored in 'session.json', for security reasons.
+  # Please do not use for malicious purposes.
+
   debug_mode: false  # Enable debug mode for troubleshooting.
   # When true, the bot will log detailed information about its processes in the console, which is helpful for debugging.
   # This mode should be off in production to avoid excessive logging.

@@ -468,7 +468,7 @@ class discord_AI_bot:
                     )
 
                     # Wait for the response to complete
-                    await asyncio.sleep(5)
+                    # await asyncio.sleep(5)
         except asyncio.CancelledError:
             func.log.debug(
                 "Monitor task for channel %s was cancelled", channel_id_str)
