@@ -122,6 +122,9 @@ class discord_AI_bot:
             session = func.get_session_data(
                 str(message.guild.id), str(message.channel.id))
 
+            if not session:
+                return
+
             if message.author.id in session["muted_users"]:
                 return
 
@@ -168,8 +171,7 @@ class discord_AI_bot:
             # Try to acquire the lock with a timeout
             try:
                 # Use a short timeout to prevent deadlocks
-                async with asyncio.timeout(5.0):
-                    await self.channel_locks[channel_id_str].acquire()
+                await asyncio.wait_for(self.channel_locks[channel_id_str].acquire(), timeout=5.0)
             except asyncio.TimeoutError:
                 func.log.warning(
                     f"Timeout acquiring lock for channel {channel_id_str}")

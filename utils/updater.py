@@ -119,7 +119,7 @@ Now, send your message introducing yourself in the chat, following the language 
             for channel_id, channel_data in channels.items():
                 # If channel data is null, mark it for removal
                 if channel_data is None:
-                    print(
+                    func.log.info(
                         f"Channel {channel_id} has null data. It will be removed.")
                     channels_to_remove.append(channel_id)
                 else:
@@ -137,7 +137,7 @@ Now, send your message introducing yourself in the chat, following the language 
     with open(file_path, "w", encoding="utf-8") as f:
         json.dump(session_data, f, indent=4, ensure_ascii=False)
 
-    print("Session file updated successfully.")
+    func.log.info("Session file updated successfully.")
 
 
 class AutoUpdater:

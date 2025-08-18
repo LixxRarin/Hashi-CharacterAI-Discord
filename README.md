@@ -1,13 +1,11 @@
 # Project Hashi - 橋
 ### Character.AI to Discord Servers!
 
-[![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)  [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-green.svg)](https://www.python.org/downloads/)  ![Discord](https://img.shields.io/discord/1288665952099237898?logo=Discord&label=AquairoPallete&link=https%3A%2F%2Fdiscord.gg%2FpPSk2g8YX2)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)  [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-green.svg)](https://www.python.org/downloads/)
  
 Project Hashi allows Character.AI personas to interact with users in your Discord server. Perfect for bringing AI personalities to your community!
 
-**Demo Server**: [Join Discord](https://discord.gg/pPSk2g8YX2) | **Report Issues**: [GitHub Issues](https://github.com/LixxRarin/Hashi-Character_AI-Discord/issues)
-
-<a href="https://ibb.co/kRLnXxq"><img src="https://i.ibb.co/XhnBtbF/Captura-de-tela-2025-02-02-141343.png" alt="..." border="0"></a>
+<a href="https://files.catbox.moe/uwwd6m.png"><img src="https://files.catbox.moe/uwwd6m.png" alt="..." border="0"></a>
 
 ## 📌 Contents
 - [Features](#-features) 
@@ -148,7 +146,7 @@ pip install -r requirements.txt --upgrade
 
 ## 🙏 Acknowledgments
 - **[KarstSkarn](https://github.com/KarstSkarn)** for inspiration from [ChAIScrapper](https://github.com/KarstSkarn/ChAIScrapper)
-- **[PyCharacterAI](https://github.com/pycharacterai)** team for unofficial API wrapper
+- **[PyCharacterAI](https://github.com/Xtr4F/PyCharacterAI)** team for unofficial API wrapper
 - **[Character.AI](https://character.ai/)**
 
 ## 📜 License
