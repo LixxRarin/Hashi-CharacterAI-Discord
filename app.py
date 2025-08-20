@@ -43,6 +43,7 @@ class BridgeBot(commands.Bot):
         # Load extensions
         await self.load_extension('commands.slash_commands')
         await self.load_extension('commands.webhook')
+        await self.load_extension('commands.bot')  # <-- Adicione esta linha
 
         # Ensure session.json exists
         if not os.path.exists("session.json"):
@@ -95,10 +96,10 @@ class BridgeBot(commands.Bot):
         for server_id, server_data in webhook.session_data.items():
             channels = server_data.get("channels", {})
             for channel_id, session in channels.items():
-                # Skip if already set up
-                if session.get("setup_has_already", False):
+                # Skip if already set up or if mode is bot
+                if session.get("setup_has_already", False) or session.get("mode") == "bot":
                     func.log.debug(
-                        "Channel %s in server %s already set up, skipping initialization",
+                        "Channel %s in server %s already set up or is in bot mode, skipping initialization",
                         channel_id, server_id
                     )
                     continue

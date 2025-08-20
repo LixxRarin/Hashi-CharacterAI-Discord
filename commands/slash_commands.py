@@ -306,7 +306,6 @@ class SlashCommands(commands.Cog):
         session = func.get_session_data(str(channel.guild.id), str(channel.id))
 
         if user.id in session["muted_users"]:
-            # Remove o ID da lista de mutados
             session["muted_users"].remove(user.id)
             await interaction.response.send_message(f"{user.mention} has been unmuted.", ephemeral=True)
         else:

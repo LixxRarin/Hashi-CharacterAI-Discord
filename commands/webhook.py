@@ -244,18 +244,20 @@ class WebHook(commands.Cog):
                         f"Failed to create webhook for channel {channel_id_str}")
                     return
 
-            # Update session data
-            new_session_data = {
+            # Update or create session data without overwriting old values
+            session = func.get_session_data(server_id, channel_id_str) or {}
+
+            session.update({
                 "channel_name": channel.name,
                 "character_id": character_id,
                 "webhook_url": WB_url,
-                "chat_id": None,
+                "mode": "webhook",
                 "setup_has_already": False,
                 "last_message_time": time.time(),
                 "awaiting_response": False,
-                "alt_token": None,
-                "muted_users": [],
-                "config": {
+                "alt_token": session.get("alt_token"),
+                "muted_users": session.get("muted_users", []),
+                "config": session.get("config", {
                     "use_cai_avatar": True,
                     "use_cai_display_name": True,
                     "new_chat_on_reset": False,
@@ -280,13 +282,13 @@ Now, send your message introducing yourself in the chat, following the language 
 │   ├─ ⏳ {time} ~ @{username} - {name}
 │   └─ 📢 Message: {message}
 └───────────────────────────────────────"""
-                }
-            }
+                })
+            })
 
-            await func.update_session_data(server_id, channel_id_str, new_session_data)
+            await func.update_session_data(server_id, channel_id_str, session)
 
             # Initialize session messages
-            greetings, reply_system = await cai.initialize_session_messages(new_session_data, server_id, channel_id_str)
+            greetings, reply_system = await cai.initialize_session_messages(session, server_id, channel_id_str)
 
             # Update session data with new chat_id
             session = func.get_session_data(server_id, channel_id_str)
@@ -365,9 +367,6 @@ Now, send your message introducing yourself in the chat, following the language 
 
             # Remove session data
             await func.remove_session_data(server_id, channel_id_str)
-
-            # Não é mais necessário chamar clear_message_cache separadamente,
-            # pois já está incluído em remove_session_data
 
             await interaction.followup.send(f"Bot successfully removed from channel {channel.mention}.", ephemeral=True)
 

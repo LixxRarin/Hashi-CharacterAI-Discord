@@ -294,7 +294,6 @@ class discord_AI_bot:
 
                     session = func.get_session_data(server_id, channel_id_str)
 
-                    # func.log.debug(f"Session data: {session}")
                     # Process the response
                     if session["config"]["remove_ai_emoji"]:
                         response = func.remove_emoji(response)
@@ -305,19 +304,35 @@ class discord_AI_bot:
                             f"Received empty response from AI for channel {channel_id_str}")
                         response = "I'm sorry, but I don't have a response at the moment. Could you please try again?"
 
-                    # Send the response via webhook
-                    webhook_url = session.get("webhook_url")
-                    if webhook_url:
-                        # Send message immediately without typing simulation
-                        await webhook.webhook_send(webhook_url, response, session)
-                        func.log.info(
-                            f"Sent AI response via webhook for channel {channel_id_str}")
-
-                        # Clear the processed messages from cache
-                        await func.remove_sent_messages_from_cache(server_id, channel_id_str)
+                    # Decide how to send the message based on the mode
+                    mode = session.get("mode", "webhook")
+                    if mode == "bot":
+                        # Send as the bot itself
+                        channel_obj = client.get_channel(int(channel_id_str))
+                        if channel_obj:
+                            if session["config"].get("send_message_line_by_line", False):
+                                for line in response.split('\n'):
+                                    if line.strip():
+                                        await channel_obj.send(line)
+                            else:
+                                await channel_obj.send(response)
+                            func.log.info(
+                                f"Sent AI response as bot for channel {channel_id_str}")
+                        else:
+                            func.log.error(f"Channel object not found for {channel_id_str}")
                     else:
-                        func.log.error(
-                            f"Webhook URL not found for channel {channel_id_str}")
+                        # Send via webhook
+                        webhook_url = session.get("webhook_url")
+                        if webhook_url:
+                            await webhook.webhook_send(webhook_url, response, session)
+                            func.log.info(
+                                f"Sent AI response via webhook for channel {channel_id_str}")
+                        else:
+                            func.log.error(
+                                f"Webhook URL not found for channel {channel_id_str}")
+
+                    # Clear the processed messages from cache
+                    await func.remove_sent_messages_from_cache(server_id, channel_id_str)
 
                     # Update the session
                     current_session = func.get_session_data(
