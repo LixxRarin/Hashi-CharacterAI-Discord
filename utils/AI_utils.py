@@ -122,6 +122,9 @@ class discord_AI_bot:
             session = func.get_session_data(
                 str(message.guild.id), str(message.channel.id))
 
+            if not session:
+                return
+
             if message.author.id in session["muted_users"]:
                 return
 
