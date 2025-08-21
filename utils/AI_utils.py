@@ -7,7 +7,7 @@ import discord
 
 import AI.cai as cai
 import utils.func as func
-import commands.webhook as webhook
+import commands.ai_manager as ai_manager
 
 
 class discord_AI_bot:
@@ -31,7 +31,7 @@ class discord_AI_bot:
         """
         func.log.info(
             "Synchronizing webhook configurations with Character.AI")
-        for server_id, server_info in webhook.session_data.items():
+        for server_id, server_info in ai_manager.session_data.items():
             for channel_id, session_data in server_info.get("channels", {}).items():
                 character_id = session_data.get("character_id")
                 if not character_id:
@@ -327,7 +327,7 @@ class discord_AI_bot:
                         # Send via webhook
                         webhook_url = session.get("webhook_url")
                         if webhook_url:
-                            await webhook.webhook_send(webhook_url, response, session)
+                            await ai_manager.webhook_send(webhook_url, response, session)
                             func.log.info(
                                 f"Sent AI response via webhook for channel {channel_id_str}")
                         else:
