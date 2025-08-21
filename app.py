@@ -12,11 +12,7 @@ import utils.AI_utils as AI_utils
 import utils.func as func
 from AI.cai import initialize_session_messages
 # Import webhook to access session_data and webhook_send
-<<<<<<< HEAD
-import commands.webhook as webhook
-=======
 import commands.ai_manager as ai_manager
->>>>>>> origin/experimental
 
 # Initialize colorama for colored logs
 init(autoreset=True)
@@ -46,13 +42,9 @@ class BridgeBot(commands.Bot):
         """Initial async setup"""
         # Load extensions
         await self.load_extension('commands.slash_commands')
-<<<<<<< HEAD
-        await self.load_extension('commands.webhook')
-=======
         # await self.load_extension('commands.webhook')
         # await self.load_extension('commands.bot')
         await self.load_extension('commands.ai_manager')
->>>>>>> origin/experimental
 
         # Ensure session.json exists
         if not os.path.exists("session.json"):
@@ -105,17 +97,10 @@ class BridgeBot(commands.Bot):
         for server_id, server_data in ai_manager.session_data.items():
             channels = server_data.get("channels", {})
             for channel_id, session in channels.items():
-<<<<<<< HEAD
-                # Skip if already set up
-                if session.get("setup_has_already", False):
-                    func.log.debug(
-                        "Channel %s in server %s already set up, skipping initialization",
-=======
                 # Skip if already set up or if mode is bot
                 if session.get("setup_has_already", False) or session.get("mode") == "bot":
                     func.log.debug(
                         "Channel %s in server %s already set up or is in bot mode, skipping initialization",
->>>>>>> origin/experimental
                         channel_id, server_id
                     )
                     continue
@@ -143,11 +128,7 @@ class BridgeBot(commands.Bot):
                 # Send greeting message if available
                 if greetings:
                     try:
-<<<<<<< HEAD
-                        await webhook.webhook_send(session["webhook_url"], greetings, session)
-=======
                         await ai_manager.webhook_send(session["webhook_url"], greetings, session)
->>>>>>> origin/experimental
                         func.log.info(
                             "Greeting message sent via webhook for channel %s", channel_id)
                     except Exception as e:
@@ -157,11 +138,7 @@ class BridgeBot(commands.Bot):
                 # Send system message if available
                 if reply_system:
                     try:
-<<<<<<< HEAD
-                        await webhook.webhook_send(session["webhook_url"], reply_system, session)
-=======
                         await ai_manager.webhook_send(session["webhook_url"], reply_system, session)
->>>>>>> origin/experimental
                         func.log.info(
                             "System message sent via webhook for channel %s", channel_id)
                     except Exception as e:

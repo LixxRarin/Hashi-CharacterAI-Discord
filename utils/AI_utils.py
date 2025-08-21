@@ -7,11 +7,7 @@ import discord
 
 import AI.cai as cai
 import utils.func as func
-<<<<<<< HEAD
-import commands.webhook as webhook
-=======
 import commands.ai_manager as ai_manager
->>>>>>> origin/experimental
 
 
 class discord_AI_bot:
@@ -300,10 +296,6 @@ class discord_AI_bot:
 
                     session = func.get_session_data(server_id, channel_id_str)
 
-<<<<<<< HEAD
-                    # func.log.debug(f"Session data: {session}")
-=======
->>>>>>> origin/experimental
                     # Process the response
                     if session["config"]["remove_ai_emoji"]:
                         response = func.remove_emoji(response)
@@ -314,21 +306,6 @@ class discord_AI_bot:
                             f"Received empty response from AI for channel {channel_id_str}")
                         response = "I'm sorry, but I don't have a response at the moment. Could you please try again?"
 
-<<<<<<< HEAD
-                    # Send the response via webhook
-                    webhook_url = session.get("webhook_url")
-                    if webhook_url:
-                        # Send message immediately without typing simulation
-                        await webhook.webhook_send(webhook_url, response, session)
-                        func.log.info(
-                            f"Sent AI response via webhook for channel {channel_id_str}")
-
-                        # Clear the processed messages from cache
-                        await func.remove_sent_messages_from_cache(server_id, channel_id_str)
-                    else:
-                        func.log.error(
-                            f"Webhook URL not found for channel {channel_id_str}")
-=======
                     # Decide how to send the message based on the mode
                     mode = session.get("mode", "webhook")
                     if mode == "bot":
@@ -358,7 +335,6 @@ class discord_AI_bot:
 
                     # Clear the processed messages from cache
                     await func.remove_sent_messages_from_cache(server_id, channel_id_str)
->>>>>>> origin/experimental
 
                     # Update the session
                     current_session = func.get_session_data(
