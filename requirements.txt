@@ -7,3 +7,4 @@ colorama
 requests
 packaging
 selfupdate
+PyNaCl
