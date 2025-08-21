@@ -370,15 +370,6 @@ Now, send your message introducing yourself in the chat, following the language 
 
             await interaction.followup.send(f"Bot successfully removed from channel {channel.mention}.", ephemeral=True)
 
-
-async def load_session_data():
-    """Load session data from session.json"""
-    global session_data
-    session_data = await asyncio.to_thread(func.read_json, "session.json") or {}
-    func.log.info(
-        f"Loaded webhook session data with {len(session_data)} servers")
-
-
 async def webhook_send(url: str, message: str, session_config: str) -> None:
     """
     Send a message via webhook.

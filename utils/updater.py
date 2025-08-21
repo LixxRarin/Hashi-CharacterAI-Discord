@@ -42,8 +42,8 @@ def sync_dict(current, default):
                 new_dict[key] = current[key]
         else:
             # If the default value is callable (like lambda for time), call it
-            new_dict[key] = default_value() if callable(
-                default_value) else default_value
+            new_dict[key] = default_value() if callable(default_value) else default_value
+    # Remove keys not in default (strict sync)
     return new_dict
 
 
@@ -53,18 +53,20 @@ def update_session_file(file_path="session.json"):
     - Only update existing servers/channels.
     - For each channel, add missing keys (with default values) and remove extra keys.
     - If a channel's data is null, remove that channel entry.
+    - Do NOT overwrite existing values like webhook_url, only add missing keys.
     """
-    # Default model for channel configuration.
+    # Updated default model for channel configuration.
     default_channel_model = {
         "channel_name": "default_channel_name",  # Placeholder for channel.name
         "character_id": "default_character_id",  # Placeholder for character_id
-        "webhook_url": "default_webhook_url",      # Placeholder for WB_url
+        "webhook_url": None,                     # Default is None, do not overwrite valid URLs!
         "chat_id": None,
         "setup_has_already": False,
         "last_message_time": lambda: time.time(),
         "awaiting_response": False,
         "alt_token": None,
         "muted_users": [],
+        "mode": None,                            # New field for mode ("bot" or "webhook")
         "config": {
             "use_cai_avatar": True,
             "use_cai_display_name": True,
@@ -124,8 +126,19 @@ Now, send your message introducing yourself in the chat, following the language 
                     channels_to_remove.append(channel_id)
                 else:
                     func.log.debug(f"Processing channel: {channel_id}")
-                    channels[channel_id] = sync_dict(
-                        channel_data, default_channel_model)
+                    # Only add missing keys, do not overwrite existing values (especially webhook_url)
+                    for key, default_value in default_channel_model.items():
+                        if key not in channel_data:
+                            channel_data[key] = default_value() if callable(default_value) else default_value
+                        # For nested config dict, sync keys but do not overwrite existing values
+                        if key == "config" and isinstance(channel_data[key], dict):
+                            for ckey, cdefault in default_channel_model["config"].items():
+                                if ckey not in channel_data["config"]:
+                                    channel_data["config"][ckey] = cdefault
+                    # Remove extra keys not in the default model
+                    for key in list(channel_data.keys()):
+                        if key not in default_channel_model:
+                            del channel_data[key]
             # Remove channels that had null data
             for channel_id in channels_to_remove:
                 del channels[channel_id]

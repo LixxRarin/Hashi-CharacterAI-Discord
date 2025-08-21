@@ -12,7 +12,7 @@ import utils.AI_utils as AI_utils
 import utils.func as func
 from AI.cai import initialize_session_messages
 # Import webhook to access session_data and webhook_send
-import commands.webhook as webhook
+import commands.ai_manager as ai_manager
 
 # Initialize colorama for colored logs
 init(autoreset=True)
@@ -42,8 +42,9 @@ class BridgeBot(commands.Bot):
         """Initial async setup"""
         # Load extensions
         await self.load_extension('commands.slash_commands')
-        await self.load_extension('commands.webhook')
-        await self.load_extension('commands.bot')  # <-- Adicione esta linha
+        # await self.load_extension('commands.webhook')
+        # await self.load_extension('commands.bot')
+        await self.load_extension('commands.ai_manager')
 
         # Ensure session.json exists
         if not os.path.exists("session.json"):
@@ -93,7 +94,7 @@ class BridgeBot(commands.Bot):
         func.log.info("Initializing all webhooks...")
 
         # Iterate over all sessions (each webhook) in session.json
-        for server_id, server_data in webhook.session_data.items():
+        for server_id, server_data in ai_manager.session_data.items():
             channels = server_data.get("channels", {})
             for channel_id, session in channels.items():
                 # Skip if already set up or if mode is bot
@@ -127,7 +128,7 @@ class BridgeBot(commands.Bot):
                 # Send greeting message if available
                 if greetings:
                     try:
-                        await webhook.webhook_send(session["webhook_url"], greetings, session)
+                        await ai_manager.webhook_send(session["webhook_url"], greetings, session)
                         func.log.info(
                             "Greeting message sent via webhook for channel %s", channel_id)
                     except Exception as e:
@@ -137,7 +138,7 @@ class BridgeBot(commands.Bot):
                 # Send system message if available
                 if reply_system:
                     try:
-                        await webhook.webhook_send(session["webhook_url"], reply_system, session)
+                        await ai_manager.webhook_send(session["webhook_url"], reply_system, session)
                         func.log.info(
                             "System message sent via webhook for channel %s", channel_id)
                     except Exception as e:
