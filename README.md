@@ -5,7 +5,7 @@
  
 Project Hashi allows Character.AI personas to interact with users in your Discord server. Perfect for bringing AI personalities to your community!
 
-**Demo Server**: [Join Discord](https://discord.gg/pPSk2g8YX2) | **Report Issues**: [GitHub Issues](https://github.com/LixxRarin/Hashi-Character_AI-Discord/issues)
+**Demo Server**: [currently unavailable :(](https://discord.gg/) | **Report Issues**: [GitHub Issues](https://github.com/LixxRarin/Hashi-Character_AI-Discord/issues)
 
 <a href="https://files.catbox.moe/uwwd6m.png"><img src="https://files.catbox.moe/uwwd6m.png" alt="..." border="0"></a>
 
@@ -81,8 +81,7 @@ Project Hashi allows Character.AI personas to interact with users in your Discor
 sudo apt update && sudo apt install python3.11
 
 # Clone repository
-git clone git@github.com:LixxRarin/Hashi-Character_AI-Discord.git
-cd hashi
+git clone https://github.com/LixxRarin/Hashi-Character_AI-Discord.git
 
 # Install dependencies 
 pip install -r requirements.txt
