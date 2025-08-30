@@ -19,7 +19,7 @@ from utils.config_updater import ConfigManager
 
 if not os.path.exists("version.txt"):
     with open("version.txt", "w") as file:
-        file.write("1.1.2\n")
+        file.write("1.1.3\n")
 
 # Initialize colorama for cross-platform colored output
 init(autoreset=True)
@@ -150,7 +150,7 @@ Now, send your message introducing yourself in the chat, following the language 
     with open(file_path, "w", encoding="utf-8") as f:
         json.dump(session_data, f, indent=4, ensure_ascii=False)
 
-    print("Session file updated successfully.")
+    func.log.debug("Session file updated successfully.")
 
 
 class AutoUpdater:
@@ -319,7 +319,7 @@ def startup_screen():
     banner = f"""{Style.BRIGHT}{Fore.WHITE}✦・ﾟ* Hashi 橋 - C.AI to Discord ﾟ・✦
 {Fore.YELLOW}▶ {Fore.WHITE}Description: {Fore.WHITE}An AI-powered Discord bot using Character.AI!
 {Fore.YELLOW}▶ {Fore.WHITE}Creator: {Fore.WHITE}LixxRarin
-{Fore.YELLOW}▶ {Fore.WHITE}GitHub: {Fore.WHITE}https://github.com/LixxRarin/CharacterAI-Discord-Bridge
+{Fore.YELLOW}▶ {Fore.WHITE}GitHub: {Fore.WHITE}https://github.com/LixxRarin/Hashi-CharacterAI-Discord
 {Fore.YELLOW}▶ {Fore.WHITE}Version: {Fore.WHITE}{return_version()}
 {Style.RESET_ALL}
 """

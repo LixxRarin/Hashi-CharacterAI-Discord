@@ -1,5 +1,4 @@
 import time
-
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -215,8 +214,7 @@ class SlashCommands(commands.Cog):
                 config["remove_user_text_from"] = [pattern.strip()
                                                    for pattern in remove_user_text_from.split(",")]
         if remove_user_emoji is not None:
-            config["remove_user_emoji"][
-                "user"] = remove_user_emoji
+            config["remove_user_emoji"] = remove_user_emoji
         if remove_ai_emoji is not None:
             config["remove_ai_emoji"] = remove_ai_emoji
         if user_reply_format_syntax is not None:
@@ -306,10 +304,6 @@ class SlashCommands(commands.Cog):
         session = func.get_session_data(str(channel.guild.id), str(channel.id))
 
         if user.id in session["muted_users"]:
-<<<<<<< HEAD
-            # Remove o ID da lista de mutados
-=======
->>>>>>> origin/experimental
             session["muted_users"].remove(user.id)
             await interaction.response.send_message(f"{user.mention} has been unmuted.", ephemeral=True)
         else:
