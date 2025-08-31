@@ -174,20 +174,40 @@ class AutoUpdater:
         self.exe_path = Path(sys.executable).resolve() if self.is_exe else None
         self.script_dir = Path(__file__).parent.resolve()
 
-    def check_and_update(self):
+    def check_and_update(self, force=False):
         if os.environ.get("SKIP_AUTOUPDATE") == "1":
             func.log.info(
                 "Skipping update check to avoid infinite restart loop.")
             return
 
         if self.is_exe:
+            # NOTA: Forçar uma atualização para .exe é mais complexo, pois precisa da URL do recurso de lançamento.
+            # A implementação atual fará o download novamente da versão mais recente, se forçada.
             latest_release = self._get_latest_release()
-            if latest_release and version.parse(latest_release['tag_name']) > version.parse(self.current_version):
-                func.log.info("New executable version detected. Updating...")
+            is_new_version = latest_release and version.parse(latest_release['tag_name']) > version.parse(self.current_version)
+
+            if force or is_new_version:
+                log_msg = "Forcing executable update..." if force else "New executable version detected. Updating..."
+                func.log.info(log_msg)
                 self._update_exe(latest_release)
             else:
                 func.log.info("No executable updates available.")
         else:
+            if force:
+                func.log.info("Forcing source code update...")
+                try:
+                    if not (self.script_dir / '.git').exists():
+                        func.log.error("Cannot force update: Not a git repository.")
+                        return
+                    subprocess.run(['git', 'fetch', 'origin', self.branch],
+                                   check=True, cwd=self.script_dir, capture_output=True)
+                    if self._update_from_commit():
+                        func.log.info("Source update applied; restarting program.")
+                        self._restart_program()
+                except subprocess.CalledProcessError as e:
+                    func.log.error(f"Failed to fetch before forced update: {e.stderr.decode().strip() if e.stderr else e}")
+                return
+
             update_available = self._is_source_update_available()
             if update_available:
                 func.log.info("New source code version detected. Updating...")
@@ -372,14 +392,17 @@ async def boot():
     config_manager = ConfigManager()
     await config_manager.check_and_update()
 
+    # Verifica a flag de forçar atualização a partir da linha de comando
+    force_update = "--force-update" in sys.argv
+
     # Initialize AutoUpdater using configuration data
     updater = AutoUpdater(
         repo_url=func.config_yaml["Options"]["repo_url"],
         current_version=return_version(),
         branch=func.config_yaml["Options"].get("repo_branch", "main")
     )
-
-    if func.config_yaml["Options"].get("auto_update", False):
-        updater.check_and_update()
+    # Executa a atualização se auto_update estiver ativado ou se for forçado
+    if func.config_yaml["Options"].get("auto_update", False) or force_update:
+        updater.check_and_update(force=force_update)
 
 asyncio.run(boot())
