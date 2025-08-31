@@ -69,7 +69,7 @@ class SlashCommands(commands.Cog):
                 text="Character.AI bots are available on Discord thanks to Hashi!")
             embed.add_field(
                 name="🔗 Learn More about Hashi",
-                value="[GitHub Repository](https://github.com/LixxRarin/Hashi-Character_AI-Discord)", inline=False)
+                value="[GitHub Repository](https://github.com/LixxRarin/Hashi-CharacterAI-Discord)", inline=False)
 
             # Send the embed
             await interaction.followup.send(embed=embed)

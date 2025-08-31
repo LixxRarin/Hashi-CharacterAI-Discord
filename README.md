@@ -81,7 +81,7 @@ Project Hashi allows Character.AI personas to interact with users in your Discor
 sudo apt update && sudo apt install python3.11
 
 # Clone repository
-git clone git@github.com:LixxRarin/Hashi-CharacterAI-Discord.git
+git clone https://github.com/LixxRarin/Hashi-CharacterAI-Discord.git
 cd Hashi-CharacterAI-Discord/
 
 # Install dependencies 

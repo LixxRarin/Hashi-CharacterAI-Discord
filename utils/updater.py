@@ -19,7 +19,7 @@ from utils.config_updater import ConfigManager
 
 if not os.path.exists("version.txt"):
     with open("version.txt", "w") as file:
-        file.write("1.1.3\n")
+        file.write("1.1.4\n")
 
 # Initialize colorama for cross-platform colored output
 init(autoreset=True)
@@ -188,9 +188,14 @@ class AutoUpdater:
             else:
                 func.log.info("No executable updates available.")
         else:
-            if self._update_from_commit():
-                func.log.info("Source update applied; restarting program.")
-                self._restart_program()
+            update_available = self._is_source_update_available()
+            if update_available:
+                func.log.info("New source code version detected. Updating...")
+                if self._update_from_commit():
+                    func.log.info("Source update applied; restarting program.")
+                    self._restart_program()
+            else:
+                func.log.info("Source code is up to date.")
 
     def _extract_repo_info(self, repo_url):
         match = re.match(
@@ -283,15 +288,47 @@ exit
         except Exception as e:
             func.log.error("Failed to execute update script: %s", e)
 
+    def _is_source_update_available(self):
+        try:
+            if not (self.script_dir / '.git').exists():
+                return False
+
+            # Fetch the latest info from the remote without applying changes
+            subprocess.run(['git', 'fetch', 'origin', self.branch],
+                           check=True, cwd=self.script_dir, capture_output=True)
+
+            # Get the local commit hash
+            local_hash_proc = subprocess.run(
+                ['git', 'rev-parse', 'HEAD'], check=True, cwd=self.script_dir, capture_output=True, text=True)
+            local_hash = local_hash_proc.stdout.strip()
+
+            # Get the remote commit hash
+            remote_hash_proc = subprocess.run(
+                ['git', 'rev-parse', f'origin/{self.branch}'], check=True, cwd=self.script_dir, capture_output=True, text=True)
+            remote_hash = remote_hash_proc.stdout.strip()
+
+            # Compare hashes
+            if local_hash != remote_hash:
+                func.log.debug(
+                    f"Update available: Local hash {local_hash[:7]} != Remote hash {remote_hash[:7]}")
+                return True
+
+            return False
+        except subprocess.CalledProcessError as e:
+            func.log.error(
+                f"Failed to check for source update: {e.stderr.decode().strip() if e.stderr else e}")
+            return False
+        except Exception as e:
+            func.log.error(
+                f"An unexpected error occurred while checking for source update: {e}")
+            return False
+
     def _update_from_commit(self):
         try:
-            if (self.script_dir / '.git').exists():
-                subprocess.run(['git', 'fetch', 'origin',
-                               self.branch], check=True, cwd=self.script_dir)
-                subprocess.run(
-                    ['git', 'reset', '--hard', f'origin/{self.branch}'], check=True, cwd=self.script_dir)
-                func.log.info("Code updated via Git (branch: %s)", self.branch)
-                return True
+            subprocess.run(['git', 'reset', '--hard', f'origin/{self.branch}'],
+                           check=True, cwd=self.script_dir, capture_output=True)
+            func.log.info("Code updated via Git (branch: %s)", self.branch)
+            return True
         except Exception as e:
             func.log.error("Source update failed: %s", e)
             return False

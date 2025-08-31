@@ -12,7 +12,7 @@ yaml.preserve_quotes = True
 yaml.encoding = "utf-8"
 
 # Default configuration content
-DEFAULT_CONFIG_CONTENT = r"""version: "1.1.4" # Don't touch here
+DEFAULT_CONFIG_CONTENT = r"""version: "1.1.5" # Don't touch here
 
 # Discord Bot Configuration
 Discord:
@@ -37,8 +37,8 @@ Options:
   auto_update: true # If true, the program will check for a new update every time it starts up
   #If true, the program will automatically search for an update
   # For realases or commits, this depends on how you run Bridget
-
-  repo_url: "git@github.com:LixxRarin/CharacterAI-Discord-Bridge.git" # Repository url
+  
+  repo_url: "https://github.com/LixxRarin/Hashi-CharacterAI-Discord" # Repository url
   # This is the repository where the program will check and update.
   # Only touch this if you know what you're doing here!
 
