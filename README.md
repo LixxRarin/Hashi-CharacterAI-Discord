@@ -100,7 +100,7 @@ Discord:
 Character_AI:
   token: "YOUR_CHARACTER_AI_TOKEN"
 ```
-> The 'config.yaml' file is very well documented, and full of options!
+> The 'config.yml' file is very well documented, and full of options!
 
 #### Getting Character.AI Token
 
@@ -121,9 +121,9 @@ Never share your token with anyone!!!
 
 #### Getting Character IDs
 1. Navigate to character's chat page:
- ```
-   https://character.ai/chat/CHARACTER_ID_HERE
-   ```
+  ```
+  https://character.ai/chat/CHARACTER_ID_HERE
+  ```
 2. Copy everything after last slash
 
 #### Setup Bot

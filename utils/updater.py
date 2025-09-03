@@ -19,7 +19,7 @@ from utils.config_updater import ConfigManager
 
 if not os.path.exists("version.txt"):
     with open("version.txt", "w") as file:
-        file.write("1.1.4\n")
+        file.write("1.1.5\n")
 
 # Initialize colorama for cross-platform colored output
 init(autoreset=True)
@@ -49,14 +49,15 @@ def sync_dict(current, default):
 
 def update_session_file(file_path="session.json"):
     """
-    Update the session.json file:
+    Update the session.json file to support multiple AIs per channel:
     - Only update existing servers/channels.
-    - For each channel, add missing keys (with default values) and remove extra keys.
+    - Migrate from old single-AI format to new multi-AI format if needed.
+    - For each AI in each channel, add missing keys (with default values) and remove extra keys.
     - If a channel's data is null, remove that channel entry.
     - Do NOT overwrite existing values like webhook_url, only add missing keys.
     """
-    # Updated default model for channel configuration.
-    default_channel_model = {
+    # Updated default model for AI configuration (each AI in a channel).
+    default_ai_model = {
         "channel_name": "default_channel_name",  # Placeholder for channel.name
         "character_id": "default_character_id",  # Placeholder for character_id
         "webhook_url": None,                     # Default is None, do not overwrite valid URLs!
@@ -126,19 +127,49 @@ Now, send your message introducing yourself in the chat, following the language 
                     channels_to_remove.append(channel_id)
                 else:
                     func.log.debug(f"Processing channel: {channel_id}")
-                    # Only add missing keys, do not overwrite existing values (especially webhook_url)
-                    for key, default_value in default_channel_model.items():
-                        if key not in channel_data:
-                            channel_data[key] = default_value() if callable(default_value) else default_value
-                        # For nested config dict, sync keys but do not overwrite existing values
-                        if key == "config" and isinstance(channel_data[key], dict):
-                            for ckey, cdefault in default_channel_model["config"].items():
-                                if ckey not in channel_data["config"]:
-                                    channel_data["config"][ckey] = cdefault
-                    # Remove extra keys not in the default model
-                    for key in list(channel_data.keys()):
-                        if key not in default_channel_model:
-                            del channel_data[key]
+                    
+                    # Check if this is old format (direct AI data) or new format (AI names as keys)
+                    is_old_format = False
+                    if isinstance(channel_data, dict):
+                        # Check if it has AI-specific keys (old format)
+                        if any(key in channel_data for key in ["character_id", "webhook_url", "chat_id"]):
+                            is_old_format = True
+                    
+                    if is_old_format:
+                        # Migrate from old format to new format
+                        func.log.info(f"Migrating channel {channel_id} from old format to new multi-AI format")
+                        
+                        # Create a default AI name for the existing data
+                        ai_name = "Default_AI"
+                        if "character_id" in channel_data and channel_data["character_id"] != "default_character_id":
+                            # Try to get a better name from character info if possible
+                            ai_name = "AI_1"
+                        
+                        # Create new structure with the existing data as the first AI
+                        new_channel_data = {ai_name: channel_data}
+                        channels[channel_id] = new_channel_data
+                        channel_data = new_channel_data
+                    
+                    # Now process each AI in the channel
+                    for ai_name, ai_data in channel_data.items():
+                        if ai_data is None:
+                            continue
+                            
+                        func.log.debug(f"Processing AI '{ai_name}' in channel: {channel_id}")
+                        
+                        # Only add missing keys, do not overwrite existing values (especially webhook_url)
+                        for key, default_value in default_ai_model.items():
+                            if key not in ai_data:
+                                ai_data[key] = default_value() if callable(default_value) else default_value
+                            # For nested config dict, sync keys but do not overwrite existing values
+                            if key == "config" and isinstance(ai_data[key], dict):
+                                for ckey, cdefault in default_ai_model["config"].items():
+                                    if ckey not in ai_data["config"]:
+                                        ai_data["config"][ckey] = cdefault
+                        # Remove extra keys not in the default model
+                        for key in list(ai_data.keys()):
+                            if key not in default_ai_model:
+                                del ai_data[key]
             # Remove channels that had null data
             for channel_id in channels_to_remove:
                 del channels[channel_id]

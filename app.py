@@ -94,17 +94,9 @@ class BridgeBot(commands.Bot):
         func.log.info("Initializing all webhooks...")
 
         # Iterate over all sessions (each webhook) in session.json
-        for server_id, server_data in ai_manager.session_data.items():
+        for server_id, server_data in func.session_cache.items():
             channels = server_data.get("channels", {})
-            for channel_id, session in channels.items():
-                # Skip if already set up or if mode is bot
-                if session.get("setup_has_already", False) or session.get("mode") == "bot":
-                    func.log.debug(
-                        "Channel %s in server %s already set up or is in bot mode, skipping initialization",
-                        channel_id, server_id
-                    )
-                    continue
-
+            for channel_id, channel_data in channels.items():
                 # Get the channel object (if available)
                 channel = self.get_channel(int(channel_id))
                 if not channel:
@@ -112,38 +104,48 @@ class BridgeBot(commands.Bot):
                         "Channel with ID %s not found.", channel_id)
                     continue
 
-                # Initialize session messages for this webhook using its own character_id
-                func.log.info(
-                    "Initializing webhook for channel %s (character_id: %s)",
-                    channel_id, session.get("character_id")
-                )
+                # Process each AI in the channel
+                for ai_name, session in channel_data.items():
+                    # Skip if already set up or if mode is bot
+                    if session.get("setup_has_already", False) or session.get("mode") == "bot":
+                        func.log.debug(
+                            "AI %s in channel %s in server %s already set up or is in bot mode, skipping initialization",
+                            ai_name, channel_id, server_id
+                        )
+                        continue
 
-                greetings, reply_system = await initialize_session_messages(session, server_id, channel_id)
+                    # Initialize session messages for this webhook using its own character_id
+                    func.log.info(
+                        "Initializing webhook for AI %s in channel %s (character_id: %s)",
+                        ai_name, channel_id, session.get("character_id")
+                    )
 
-                if not session.get("webhook_url"):
-                    func.log.error(
-                        "No webhook URL found for channel %s in server %s", channel_id, server_id)
-                    continue
+                    greetings, reply_system = await initialize_session_messages(session, server_id, channel_id)
 
-                # Send greeting message if available
-                if greetings:
-                    try:
-                        await ai_manager.webhook_send(session["webhook_url"], greetings, session)
-                        func.log.info(
-                            "Greeting message sent via webhook for channel %s", channel_id)
-                    except Exception as e:
+                    if not session.get("webhook_url"):
                         func.log.error(
-                            "Error sending greeting via webhook for channel %s: %s", channel_id, e)
+                            "No webhook URL found for AI %s in channel %s in server %s", ai_name, channel_id, server_id)
+                        continue
 
-                # Send system message if available
-                if reply_system:
-                    try:
-                        await ai_manager.webhook_send(session["webhook_url"], reply_system, session)
-                        func.log.info(
-                            "System message sent via webhook for channel %s", channel_id)
-                    except Exception as e:
-                        func.log.error(
-                            "Error sending system message via webhook for channel %s: %s", channel_id, e)
+                    # Send greeting message if available
+                    if greetings:
+                        try:
+                            await ai_manager.webhook_send(session["webhook_url"], greetings, session)
+                            func.log.info(
+                                "Greeting message sent via webhook for AI %s in channel %s", ai_name, channel_id)
+                        except Exception as e:
+                            func.log.error(
+                                "Error sending greeting via webhook for AI %s in channel %s: %s", ai_name, channel_id, e)
+
+                    # Send system message if available
+                    if reply_system:
+                        try:
+                            await ai_manager.webhook_send(session["webhook_url"], reply_system, session)
+                            func.log.info(
+                                "System message sent via webhook for AI %s in channel %s", ai_name, channel_id)
+                        except Exception as e:
+                            func.log.error(
+                                "Error sending system message via webhook for AI %s in channel %s: %s", ai_name, channel_id, e)
 
         func.log.info("All webhooks initialized!")
 

@@ -11,68 +11,141 @@ class SlashCommands(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    async def ai_name_autocomplete(self, interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+        """
+        Autocomplete function for AI names in the current channel.
+        """
+        try:
+            server_id = str(interaction.guild.id)
+            channel_id_str = str(interaction.channel.id)
+            channel_data = func.get_session_data(server_id, channel_id_str)
+            
+            if not channel_data:
+                return []
+            
+            # Filter AI names that start with the current input
+            choices = []
+            for ai_name in channel_data.keys():
+                if current.lower() in ai_name.lower():
+                    choices.append(app_commands.Choice(name=ai_name, value=ai_name))
+            
+            # Limit to 25 choices (Discord limit)
+            return choices[:25]
+        except Exception as e:
+            func.log.error(f"Error in ai_name_autocomplete: {e}")
+            return []
+
     @app_commands.command(name="character_info", description="Show Character.AI bot information.")
-    async def character_info(self, interaction: discord.Integration, channel: discord.TextChannel):
+    @app_commands.describe(
+        ai_name="Name of the AI to get info from (optional - shows all if not specified)"
+    )
+    @app_commands.autocomplete(ai_name=ai_name_autocomplete)
+    async def character_info(self, interaction: discord.Interaction, ai_name: str = None):
         """
         Fetches bot information from Character.AI and displays it in an embed.
         """
-
-        session_data = func.read_json("session.json")
-        character_id = None
-
-        try:
-            character_id = session_data[str(
-                channel.guild.id)]["channels"][str(channel.id)]["character_id"]
-        except:
-            func.log.warning(
-                f"There is no character available for this channel: {channel.id}")
-
         await interaction.response.defer()  # Defer response while fetching data
 
-        if character_id is None:
-            await interaction.followup.send("There is no character available for this channel. (Try create)")
+        server_id = str(interaction.guild.id)
+        channel_id_str = str(interaction.channel.id)
+        channel_data = func.get_session_data(server_id, channel_id_str)
+        
+        if not channel_data:
+            await interaction.followup.send("There are no AIs configured in this channel.")
+            return
+        
+        if ai_name:
+            # Show info for specific AI
+            if ai_name not in channel_data:
+                await interaction.followup.send(f"AI '{ai_name}' not found in this channel.")
+                return
+            
+            session = channel_data[ai_name]
+            character_id = session.get("character_id")
+            
+            if not character_id:
+                await interaction.followup.send(f"AI '{ai_name}' has no character ID configured.")
+                return
+            
+            await self._show_character_info(interaction, character_id, ai_name)
         else:
+            # Show info for all AIs
+            embeds = []
+            for ai_name, ai_data in channel_data.items():
+                character_id = ai_data.get("character_id")
+                if character_id:
+                    embed = await self._get_character_embed(character_id, ai_name)
+                    if embed:
+                        embeds.append(embed)
+            
+            if not embeds:
+                await interaction.followup.send("No valid character information found for any AI in this channel.")
+                return
+            
+            # Send first embed
+            await interaction.followup.send(embed=embeds[0])
+            
+            # Send remaining embeds if any
+            for embed in embeds[1:]:
+                await interaction.followup.send(embed=embed)
+
+    async def _show_character_info(self, interaction, character_id, ai_name):
+        """Show character info for a specific AI"""
+        try:
+            # Fetch bot info
+            bot_data = await get_bot_info(character_id=character_id)
+        except Exception as e:
+            func.log.error(f"Failed to retrieve bot info: {e}")
+            await interaction.followup.send("❌ **Error:** Unable to retrieve bot information. Please try again later.")
+            return
+
+        if not bot_data:
+            await interaction.followup.send("❌ **Error:** Unable to retrieve bot information. Please try again later.")
+            return
+
+        embed = await self._get_character_embed(character_id, ai_name, bot_data)
+        if embed:
+            await interaction.followup.send(embed=embed)
+
+    async def _get_character_embed(self, character_id, ai_name, bot_data=None):
+        """Get character embed for display"""
+        if not bot_data:
             try:
-                # Fetch bot info
                 bot_data = await get_bot_info(character_id=character_id)
             except Exception as e:
                 func.log.error(f"Failed to retrieve bot info: {e}")
-                await interaction.followup.send("❌ **Error:** Unable to retrieve bot information. Please try again later.")
-                return
+                return None
+        
+        if not bot_data:
+            return None
 
-            # Extract relevant details
-            name = bot_data.get("name", "Unknown Bot")
-            # Fix: Use None instead of discord.Embed.Empty
-            avatar_url = bot_data.get("avatar_url", None)
-            title = bot_data.get("title", "No title available.")
-            description = bot_data.get(
-                "description", "No description provided.").replace("\n", " ")
-            visibility = bot_data.get("visibility", "Unknown")
-            interactions = bot_data.get("num_interactions", 0)
-            author = bot_data.get("author_username", "Unknown Author")
+        # Extract relevant details
+        name = bot_data.get("name", "Unknown Bot")
+        avatar_url = bot_data.get("avatar_url", None)
+        title = bot_data.get("title", "No title available.")
+        description = bot_data.get("description", "No description provided.").replace("\n", " ")
+        visibility = bot_data.get("visibility", "Unknown")
+        interactions = bot_data.get("num_interactions", 0)
+        author = bot_data.get("author_username", "Unknown Author")
 
-            # Create embed
-            embed = discord.Embed(
-                title=f"{name} - Character Information",
-                description=f"**{title}**\n\n{description}",
-                color=discord.Color.blue()
-            )
-            if avatar_url:  # Only set thumbnail if a valid URL exists
-                embed.set_thumbnail(url=avatar_url)
+        # Create embed
+        embed = discord.Embed(
+            title=f"{name} - Character Information ({ai_name})",
+            description=f"**{title}**\n\n{description}",
+            color=discord.Color.blue()
+        )
+        if avatar_url:
+            embed.set_thumbnail(url=avatar_url)
 
-            embed.add_field(name="👤 Creator:", value=author, inline=True)
-            embed.add_field(name="🔄 Total Interactions:",
-                            value=f"{interactions:,}", inline=True)
-            embed.add_field(name="🌎 Visibility:",
-                            value=visibility.capitalize(), inline=True)
-            embed.set_footer(
-                text="Character.AI bots are available on Discord thanks to Hashi!")
-            embed.add_field(
-                name="🔗 Learn More about Hashi",
-                value="[GitHub Repository](https://github.com/LixxRarin/Hashi-CharacterAI-Discord)", inline=False)
+        embed.add_field(name="👤 Creator:", value=author, inline=True)
+        embed.add_field(name="🔄 Total Interactions:", value=f"{interactions:,}", inline=True)
+        embed.add_field(name="🌎 Visibility:", value=visibility.capitalize(), inline=True)
+        embed.set_footer(text="Character.AI bots are available on Discord thanks to Hashi!")
+        embed.add_field(
+            name="🔗 Learn More about Hashi",
+            value="[GitHub Repository](https://github.com/LixxRarin/Hashi-CharacterAI-Discord)", inline=False)
 
-            # Send the embed
-            await interaction.followup.send(embed=embed)
+        return embed
 
     @app_commands.command(name="ping", description="Displays latency and possible connection issues.")
     async def ping(self, interaction: discord.Interaction):
@@ -123,9 +196,10 @@ class SlashCommands(commands.Cog):
         # Edit the initial response with the final message
         await interaction.edit_original_response(content=message)
 
-    @app_commands.command(name="config", description="Update bot configuration settings")
+    @app_commands.command(name="config", description="Update AI configuration settings")
     @app_commands.default_permissions(administrator=True)
     @app_commands.describe(
+        ai_name="Name of the AI to configure",
         use_cai_avatar="Use Character.AI avatar for webhooks",
         use_cai_display_name="Use Character.AI display name for webhooks",
         new_chat_on_reset="Create a new chat session upon reset",
@@ -141,10 +215,11 @@ class SlashCommands(commands.Cog):
         user_reply_format_syntax="Template for formatting user replies",
         user_format_syntax="Template for formatting user messages"
     )
+    @app_commands.autocomplete(ai_name=ai_name_autocomplete)
     async def config(
         self,
         interaction: discord.Interaction,
-        channel: discord.TextChannel,
+        ai_name: str,
         use_cai_avatar: bool = None,
         use_cai_display_name: bool = None,
         new_chat_on_reset: bool = None,
@@ -162,10 +237,16 @@ class SlashCommands(commands.Cog):
     ):
         # Retrieve server and channel IDs as strings
         server_id = str(interaction.guild.id)
-        channel_id = str(channel.id)
+        channel_id = str(interaction.channel.id)
 
-        # Get the current session configuration for this server and channel
-        session = func.get_session_data(server_id, channel_id)
+        # Get the current channel data
+        channel_data = func.get_session_data(server_id, channel_id)
+        
+        if not channel_data or ai_name not in channel_data:
+            await interaction.response.send_message(f"AI '{ai_name}' not found in this channel.", ephemeral=True)
+            return
+        
+        session = channel_data[ai_name]
 
         # Shortcut to the configuration dictionary
         config = session.setdefault("config", {})
@@ -227,57 +308,76 @@ class SlashCommands(commands.Cog):
                 config["user_format_syntax"] = "{message}"
             else:
                 config["user_format_syntax"] = user_format_syntax
+        # Update the specific AI in channel data
+        channel_data[ai_name] = session
+        
         # Save the updated configuration back to the session
-        await func.update_session_data(server_id, channel_id, session)
-        await interaction.response.send_message("Configuration updated successfully!", ephemeral=True)
+        await func.update_session_data(server_id, channel_id, channel_data)
+        await interaction.response.send_message(f"Configuration updated successfully for AI '{ai_name}'!", ephemeral=True)
 
     @app_commands.command(name="copy_config", description="Copies all settings from one AI to another!")
     @app_commands.default_permissions(administrator=True)
-    async def copy_config(self, interaction: discord.Integration, from_channel: discord.TextChannel, to_channel: discord.TextChannel):
+    @app_commands.describe(
+        from_ai_name="Name of the source AI",
+        to_ai_name="Name of the target AI"
+    )
+    @app_commands.autocomplete(from_ai_name=ai_name_autocomplete)
+    @app_commands.autocomplete(to_ai_name=ai_name_autocomplete)
+    async def copy_config(self, interaction: discord.Interaction, from_ai_name: str, to_ai_name: str):
+        server_id = str(interaction.guild.id)
+        channel_id = str(interaction.channel.id)
+        
+        channel_data = func.get_session_data(server_id, channel_id)
 
-        from_channel_session = func.get_session_data(
-            str(from_channel.guild.id), str(from_channel.id))
-        to_channel_session = func.get_session_data(
-            str(to_channel.guild.id), str(to_channel.id))
-
-        if from_channel_session is None:
-            await interaction.response.send_message(f"⚠️ No configured AI found in {from_channel.mention}, try `/setup`.", ephemeral=True)
+        if not channel_data or from_ai_name not in channel_data:
+            await interaction.response.send_message(f"⚠️ AI '{from_ai_name}' not found in this channel.", ephemeral=True)
             return
-        if to_channel_session is None:
-            await interaction.response.send_message(f"⚠️ No configured AI found in {to_channel.mention}, try `/setup`.", ephemeral=True)
+        if not channel_data or to_ai_name not in channel_data:
+            await interaction.response.send_message(f"⚠️ AI '{to_ai_name}' not found in this channel.", ephemeral=True)
             return
 
-        to_channel_session["config"] = from_channel_session["config"]
+        # Copy config from source AI to target AI
+        channel_data[to_ai_name]["config"] = channel_data[from_ai_name]["config"].copy()
 
-        func.update_session_data(str(to_channel.guild.id), str(
-            to_channel.id), to_channel_session)
+        await func.update_session_data(server_id, channel_id, channel_data)
 
-        await interaction.response.send_message(f"Settings successfully copied from {from_channel} to {to_channel}!", ephemeral=True)
+        await interaction.response.send_message(f"Settings successfully copied from AI '{from_ai_name}' to AI '{to_ai_name}' in this channel!", ephemeral=True)
 
-    @app_commands.command(name="show_config", description="Display all AI configuration settings for a specific channel.")
-    async def show_config(self, interaction: discord.Interaction, channel: discord.TextChannel):
+    @app_commands.command(name="show_config", description="Display AI configuration settings for a specific AI.")
+    @app_commands.describe(
+        ai_name="Name of the AI to show config for"
+    )
+    @app_commands.autocomplete(ai_name=ai_name_autocomplete)
+    async def show_config(self, interaction: discord.Interaction, ai_name: str):
         """
-        Retrieves and displays all configuration settings from session.json for a given channel.
+        Retrieves and displays configuration settings for a specific AI.
         """
         # Load session data
-        session = func.get_session_data(str(channel.guild.id), str(channel.id))
+        server_id = str(interaction.guild.id)
+        channel_id = str(interaction.channel.id)
+        channel_data = func.get_session_data(server_id, channel_id)
 
+        if not channel_data or ai_name not in channel_data:
+            await interaction.response.send_message(f"❌ AI '{ai_name}' not found in this channel.", ephemeral=True)
+            return
+
+        session = channel_data[ai_name]
+        
         try:
-            # Get channel-specific configuration
-            channel_config = session["config"]
+            # Get AI-specific configuration
+            ai_config = session["config"]
         except KeyError:
-            func.log.warning(
-                f"No configuration found for channel: {channel.id}")
-            await interaction.response.send_message("❌ No configuration found for this channel.", ephemeral=True)
+            func.log.warning(f"No configuration found for AI '{ai_name}' in channel: {channel_id}")
+            await interaction.response.send_message(f"❌ No configuration found for AI '{ai_name}' in this channel.", ephemeral=True)
             return
 
         # Build embed to display config
         embed = discord.Embed(
-            title=f"Configuration for the channel: {channel.mention}",
+            title=f"Configuration for AI '{ai_name}' in {interaction.channel.mention}",
             color=discord.Color.light_gray()
         )
 
-        for key, value in channel_config.items():
+        for key, value in ai_config.items():
             embed.add_field(name=key, value=str(value), inline=False)
 
         # Send the configuration summary
@@ -285,43 +385,81 @@ class SlashCommands(commands.Cog):
 
     @app_commands.command(name="mute", description="Mute a user so the AI does not capture their messages")
     @app_commands.default_permissions(administrator=True)
-    async def mute(self, interaction: discord.Interaction, channel: discord.TextChannel, user: discord.Member):
-
-        session = func.get_session_data(str(channel.guild.id), str(channel.id))
+    @app_commands.describe(
+        ai_name="Name of the AI to mute user for",
+        user="User to mute"
+    )
+    @app_commands.autocomplete(ai_name=ai_name_autocomplete)
+    async def mute(self, interaction: discord.Interaction, ai_name: str, user: discord.Member):
+        server_id = str(interaction.guild.id)
+        channel_id = str(interaction.channel.id)
+        channel_data = func.get_session_data(server_id, channel_id)
+        
+        if not channel_data or ai_name not in channel_data:
+            await interaction.response.send_message(f"AI '{ai_name}' not found in this channel.", ephemeral=True)
+            return
+        
+        session = channel_data[ai_name]
 
         if user.id not in session["muted_users"]:
             session["muted_users"].append(user.id)
-            await interaction.response.send_message(f"{user.mention} has been muted.", ephemeral=True)
+            await interaction.response.send_message(f"{user.mention} has been muted for AI '{ai_name}'.", ephemeral=True)
         else:
-            await interaction.response.send_message(f"{user.mention} is already muted.", ephemeral=True)
+            await interaction.response.send_message(f"{user.mention} is already muted for AI '{ai_name}'.", ephemeral=True)
 
-        await func.update_session_data(str(channel.guild.id), str(channel.id), session)
+        # Update the specific AI in channel data
+        channel_data[ai_name] = session
+        await func.update_session_data(server_id, channel_id, channel_data)
 
     @app_commands.command(name="unmute", description="Unmute a user so the AI captures their messages")
     @app_commands.default_permissions(administrator=True)
-    async def unmute(self, interaction: discord.Interaction, channel: discord.TextChannel, user: discord.Member):
-
-        session = func.get_session_data(str(channel.guild.id), str(channel.id))
+    @app_commands.describe(
+        ai_name="Name of the AI to unmute user for",
+        user="User to unmute"
+    )
+    @app_commands.autocomplete(ai_name=ai_name_autocomplete)
+    async def unmute(self, interaction: discord.Interaction, ai_name: str, user: discord.Member):
+        server_id = str(interaction.guild.id)
+        channel_id = str(interaction.channel.id)
+        channel_data = func.get_session_data(server_id, channel_id)
+        
+        if not channel_data or ai_name not in channel_data:
+            await interaction.response.send_message(f"AI '{ai_name}' not found in this channel.", ephemeral=True)
+            return
+        
+        session = channel_data[ai_name]
 
         if user.id in session["muted_users"]:
             session["muted_users"].remove(user.id)
-            await interaction.response.send_message(f"{user.mention} has been unmuted.", ephemeral=True)
+            await interaction.response.send_message(f"{user.mention} has been unmuted for AI '{ai_name}'.", ephemeral=True)
         else:
-            await interaction.response.send_message(f"{user.mention} is not muted.", ephemeral=True)
+            await interaction.response.send_message(f"{user.mention} is not muted for AI '{ai_name}'.", ephemeral=True)
 
-        await func.update_session_data(str(channel.guild.id), str(channel.id), session)
+        # Update the specific AI in channel data
+        channel_data[ai_name] = session
+        await func.update_session_data(server_id, channel_id, channel_data)
 
-    @app_commands.command(name="list_muted", description="List all muted users in a channel")
+    @app_commands.command(name="list_muted", description="List all muted users for a specific AI")
     @app_commands.default_permissions(administrator=True)
-    async def list_muted(self, interaction: discord.Interaction, channel: discord.TextChannel):
-
-        # Retrieve session data for the given guild and channel
-        session = func.get_session_data(str(channel.guild.id), str(channel.id))
+    @app_commands.describe(
+        ai_name="Name of the AI to list muted users for"
+    )
+    @app_commands.autocomplete(ai_name=ai_name_autocomplete)
+    async def list_muted(self, interaction: discord.Interaction, ai_name: str):
+        server_id = str(interaction.guild.id)
+        channel_id = str(interaction.channel.id)
+        channel_data = func.get_session_data(server_id, channel_id)
+        
+        if not channel_data or ai_name not in channel_data:
+            await interaction.response.send_message(f"AI '{ai_name}' not found in this channel.", ephemeral=True)
+            return
+        
+        session = channel_data[ai_name]
         muted_users = session.get("muted_users", [])
 
         if not muted_users:
             # If there are no muted users, inform the admin
-            await interaction.response.send_message("No users are currently muted.", ephemeral=True)
+            await interaction.response.send_message(f"No users are currently muted for AI '{ai_name}'.", ephemeral=True)
             return
 
         # Get user mentions for all muted user IDs
@@ -329,16 +467,27 @@ class SlashCommands(commands.Cog):
         muted_list = "\n".join(mentions)
 
         # Send the list of muted users
-        await interaction.response.send_message(f"Muted users in {channel.mention}:\n{muted_list}", ephemeral=True)
+        await interaction.response.send_message(f"Muted users for AI '{ai_name}' in {interaction.channel.mention}:\n{muted_list}", ephemeral=True)
 
-    @app_commands.command(name="token", description="Use an alternative token for a channel. The host can see your token, so be careful.!")
+    @app_commands.command(name="token", description="Use an alternative token for a specific AI. The host can see your token, so be careful!")
     @app_commands.default_permissions(administrator=True)
-    async def token(self, interaction: discord.Interaction, channel: discord.TextChannel, token: str):
+    @app_commands.describe(
+        ai_name="Name of the AI to set token for",
+        token="Alternative token (use 'none' to clear)"
+    )
+    @app_commands.autocomplete(ai_name=ai_name_autocomplete)
+    async def token(self, interaction: discord.Interaction, ai_name: str, token: str):
 
         if func.config_yaml["Options"]["enable_alternative_cai_token"]:
-
-            session = func.get_session_data(
-                str(channel.guild.id), str(channel.id))
+            server_id = str(interaction.guild.id)
+            channel_id = str(interaction.channel.id)
+            channel_data = func.get_session_data(server_id, channel_id)
+            
+            if not channel_data or ai_name not in channel_data:
+                await interaction.response.send_message(f"AI '{ai_name}' not found in this channel.", ephemeral=True)
+                return
+            
+            session = channel_data[ai_name]
 
             try:
                 client = await get_client(token)
@@ -349,14 +498,17 @@ class SlashCommands(commands.Cog):
             # Set the alternative token or clear it if the user inputs "none"
             session["alt_token"] = None if token.lower() == "none" else token
 
+            # Update the specific AI in channel data
+            channel_data[ai_name] = session
+            
             # Update session data
-            await func.update_session_data(str(channel.guild.id), str(channel.id), session)
+            await func.update_session_data(server_id, channel_id, channel_data)
 
             # Confirmation message
             if session["alt_token"] is None:
-                await interaction.response.send_message("The alternative token has been cleared.", ephemeral=True)
+                await interaction.response.send_message(f"The alternative token has been cleared for AI '{ai_name}'.", ephemeral=True)
             else:
-                await interaction.response.send_message("The alternative token has been set successfully. Remember to change the chat ID with '/chat_id'.", ephemeral=True)
+                await interaction.response.send_message(f"The alternative token has been set successfully for AI '{ai_name}'. Remember to change the chat ID with '/chat_id'.", ephemeral=True)
         else:
             await interaction.response.send_message("This bot does not allow the use of alternative tokens.", ephemeral=True)
 

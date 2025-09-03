@@ -231,7 +231,15 @@ def capture_message(message_info, reply_message=None) -> None:
     if channel_id not in dados[server_id]:
         dados[server_id][channel_id] = {}
 
-    session = get_session_data(server_id, channel_id)
+    channel_data = get_session_data(server_id, channel_id)
+    
+    if not channel_data:
+        return
+    
+    # Use the first AI's configuration for message formatting
+    # (all AIs in a channel should have the same formatting settings)
+    first_ai_name = next(iter(channel_data.keys()))
+    session = channel_data[first_ai_name]
 
     # Retrieve format templates from configuration
     template_syntax = session["config"].get("user_format_syntax", "{message}")

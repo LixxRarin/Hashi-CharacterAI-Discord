@@ -229,7 +229,8 @@ async def cai_response(messages: Dict[str, Any], message,
                        server_id: str,
                        channel_id: str,
                        chat_id: Optional[str] = None,
-                       character_id: Optional[str] = None,) -> str:
+                       character_id: Optional[str] = None,
+                       session: Optional[Dict[str, Any]] = None) -> str:
     """
     Generates a response from Character.AI based on the cached messages.
 
@@ -238,13 +239,21 @@ async def cai_response(messages: Dict[str, Any], message,
         message: The Discord message object
         chat_id: The Character.AI chat ID
         character_id: The Character.AI character ID
+        session: The session data for the specific AI
 
     Returns:
         str: The AI's response
     """
     global AI_response
 
-    session = func.get_session_data(server_id, channel_id)
+    if session is None:
+        # Fallback: get session data (this should not happen in normal operation)
+        channel_data = func.get_session_data(server_id, channel_id)
+        if not channel_data:
+            func.log.error("No session data found for channel %s", channel_id)
+            return "Error: No session data found."
+        # Use the first AI's session as fallback
+        session = next(iter(channel_data.values()))
 
     if not chat_id or not character_id:
         func.log.error("Missing chat_id or character_id for AI response")
@@ -303,7 +312,7 @@ async def cai_response(messages: Dict[str, Any], message,
         try:
             async with api_semaphore:
                 if client is None:
-                    client = await get_client(token=current_token())
+                    client = await get_client(token=current_token(session))
                 new_chat, _ = await client.chat.create_chat(character_id)
                 chat_id = new_chat.chat_id
                 func.log.info(f"New chat created with ID: {chat_id}")
@@ -364,6 +373,25 @@ async def process_response_queue():
                 # Get cached messages
                 cached_data = await asyncio.to_thread(func.read_json, "messages_cache.json") or {}
 
+                # Get session data for this specific AI
+                channel_data = func.get_session_data(server_id, channel_id)
+                if not channel_data:
+                    func.log.error("No session data found for channel %s", channel_id)
+                    await callback("Error: No session data found.")
+                    return
+                
+                # Find the AI session that matches the character_id
+                session = None
+                for ai_name, ai_session in channel_data.items():
+                    if ai_session.get("character_id") == character_id:
+                        session = ai_session
+                        break
+                
+                if not session:
+                    func.log.error("No session found for character_id %s in channel %s", character_id, channel_id)
+                    await callback("Error: No session found for this AI.")
+                    return
+
                 # Generate response
                 response = await cai_response(
                     cached_data,
@@ -372,6 +400,7 @@ async def process_response_queue():
                     channel_id=channel_id,
                     chat_id=chat_id,
                     character_id=character_id,
+                    session=session
                 )
 
                 # Execute callback with response

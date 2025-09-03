@@ -10,13 +10,33 @@ from discord.ext import commands
 import utils.func as func
 import AI.cai as cai
 
-# Global session data
-session_data: Dict[str, Any] = {}
+# Note: session_data is now managed through func.session_cache
 
 class AIManager(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.webhook_locks: Dict[str, asyncio.Lock] = {}
+
+    def _generate_unique_ai_name(self, base_name: str, existing_names: set) -> str:
+        """
+        Generate a unique AI name by adding a suffix if the name already exists.
+        
+        Args:
+            base_name: The desired AI name
+            existing_names: Set of existing AI names in the channel
+            
+        Returns:
+            str: A unique AI name
+        """
+        if base_name not in existing_names:
+            return base_name
+        
+        # Try adding _2, _3, etc. until we find a unique name
+        counter = 2
+        while f"{base_name}_{counter}" in existing_names:
+            counter += 1
+        
+        return f"{base_name}_{counter}"
 
     async def _fetch_avatar(self, url: str) -> Optional[bytes]:
         """Fetch avatar image from URL."""
@@ -90,11 +110,12 @@ class AIManager(commands.Cog):
         except Exception as e:
             func.log.error(f"Failed to update bot profile: {e}")
 
-    @app_commands.command(name="setup", description="Setup the AI for a channel (bot or webhook mode).")
+    @app_commands.command(name="setup", description="Setup an AI for a channel (bot or webhook mode).")
     @app_commands.default_permissions(administrator=True)
     @app_commands.describe(
         channel="Channel to use the AI",
         character_id="Character ID",
+        ai_name="Name for this AI instance (e.g., 'Amelia', 'Outra_IA')",
         mode="Mode: bot or webhook"
     )
     @app_commands.choices(mode=[
@@ -106,6 +127,7 @@ class AIManager(commands.Cog):
         interaction: discord.Interaction,
         channel: discord.TextChannel,
         character_id: str,
+        ai_name: str,
         mode: app_commands.Choice[str]
     ):
         """
@@ -119,7 +141,22 @@ class AIManager(commands.Cog):
 
         server_id = str(interaction.guild.id)
         channel_id_str = str(channel.id)
-        session = func.get_session_data(server_id, channel_id_str) or {}
+        
+        # Get the channel's AI configurations
+        channel_data = func.get_session_data(server_id, channel_id_str) or {}
+        
+        # Generate a unique AI name if the requested name already exists
+        existing_names = set(channel_data.keys())
+        unique_ai_name = self._generate_unique_ai_name(ai_name, existing_names)
+        
+        # Notify user if the name was changed
+        if unique_ai_name != ai_name:
+            await interaction.followup.send(f"AI name '{ai_name}' already exists. Using '{unique_ai_name}' instead.", ephemeral=True)
+        
+        ai_name = unique_ai_name
+        
+        # Create new AI session
+        session = {}
 
         config_default = {
             "use_cai_avatar": True,
@@ -153,32 +190,11 @@ Now, send your message introducing yourself in the chat, following the language 
             if channel_id_str not in self.webhook_locks:
                 self.webhook_locks[channel_id_str] = asyncio.Lock()
             async with self.webhook_locks[channel_id_str]:
-                WB_url = session.get("webhook_url")
-                if session and "webhook_url" in session:
-                    # Try to update existing webhook
-                    try:
-                        async with aiohttp.ClientSession() as aio_session:
-                            webhook_obj = discord.Webhook.from_url(WB_url, session=aio_session)
-                            avatar_bytes = await self._fetch_avatar(character_info["avatar_url"])
-                            if avatar_bytes is None:
-                                avatar_bytes = b""
-                            await webhook_obj.edit(
-                                name=character_info["name"],
-                                avatar=avatar_bytes,
-                                reason=f"Updating Webhook - {character_info['name']}"
-                            )
-                        func.log.info(f"Updated existing webhook for channel {channel_id_str}")
-                    except Exception as e:
-                        func.log.error(f"Failed to update webhook: {e}")
-                        WB_url = await self._create_webhook(interaction, channel, character_info)
-                        if WB_url is None:
-                            await interaction.followup.send("Failed to create webhook.", ephemeral=True)
-                            return
-                else:
-                    WB_url = await self._create_webhook(interaction, channel, character_info)
-                    if WB_url is None:
-                        func.log.error(f"Failed to create webhook for channel {channel_id_str}")
-                        return
+                # Create webhook for this AI instance
+                WB_url = await self._create_webhook(interaction, channel, character_info)
+                if WB_url is None:
+                    func.log.error(f"Failed to create webhook for channel {channel_id_str}")
+                    return
 
                 session.update({
                     "channel_name": channel.name,
@@ -193,30 +209,44 @@ Now, send your message introducing yourself in the chat, following the language 
                     "config": session.get("config", config_default)
                 })
 
-                await func.update_session_data(server_id, channel_id_str, session)
+                # Add this AI to the channel's AI configurations
+                channel_data[ai_name] = session
+                await func.update_session_data(server_id, channel_id_str, channel_data)
+                
                 greetings, reply_system = await cai.initialize_session_messages(session, server_id, channel_id_str)
-                session = func.get_session_data(server_id, channel_id_str)
-                if session:
-                    session["setup_has_already"] = True
-                    await func.update_session_data(server_id, channel_id_str, session)
                 if greetings:
                     try:
                         await webhook_send(WB_url, greetings, session)
-                        func.log.info("Greeting message sent via webhook for channel %s", channel_id_str)
+                        func.log.info("Greeting message sent via webhook for AI %s in channel %s", ai_name, channel_id_str)
                     except Exception as e:
-                        func.log.error("Error sending greeting via webhook for channel %s: %s", channel_id_str, e)
+                        func.log.error("Error sending greeting via webhook for AI %s in channel %s: %s", ai_name, channel_id_str, e)
                 if reply_system:
                     try:
                         await webhook_send(WB_url, reply_system, session)
-                        func.log.info("System message sent via webhook for channel %s", channel_id_str)
+                        func.log.info("System message sent via webhook for AI %s in channel %s", ai_name, channel_id_str)
                     except Exception as e:
-                        func.log.error("Error sending system message via webhook for channel %s: %s", channel_id_str, e)
+                        func.log.error("Error sending system message via webhook for AI %s in channel %s: %s", ai_name, channel_id_str, e)
+                
+                # Mark setup as complete
+                channel_data[ai_name]["setup_has_already"] = True
+                await func.update_session_data(server_id, channel_id_str, channel_data)
+                
                 await interaction.followup.send(
-                    f"Setup successful!\n**AI name:** {character_info['name']}\n**Character ID:** `{character_id}`\n**Channel:** {channel.mention}\n**Mode:** Webhook",
+                    f"Setup successful!\n**AI name:** {ai_name}\n**Character name:** {character_info['name']}\n**Character ID:** `{character_id}`\n**Channel:** {channel.mention}\n**Mode:** Webhook",
                     ephemeral=True
                 )
         else:
-            # Bot mode setup
+            # Bot mode setup - only allow one bot per channel
+            existing_bot = None
+            for ai_name_existing, ai_data in channel_data.items():
+                if ai_data.get("mode") == "bot":
+                    existing_bot = ai_name_existing
+                    break
+            
+            if existing_bot:
+                await interaction.followup.send(f"Bot mode is already configured for AI '{existing_bot}' in this channel. Only one bot per channel is allowed.", ephemeral=True)
+                return
+            
             await self._update_bot_profile(interaction.guild, character_info)
             session.update({
                 "channel_name": channel.name,
@@ -229,66 +259,81 @@ Now, send your message introducing yourself in the chat, following the language 
                 "muted_users": session.get("muted_users", []),
                 "config": session.get("config", config_default)
             })
-            await func.update_session_data(server_id, channel_id_str, session)
+            
+            # Add this AI to the channel's AI configurations
+            channel_data[ai_name] = session
+            await func.update_session_data(server_id, channel_id_str, channel_data)
+            
             greetings, reply_system = await cai.initialize_session_messages(session, server_id, channel_id_str)
-            session = func.get_session_data(server_id, channel_id_str)
-            if session:
-                session["setup_has_already"] = True
-                await func.update_session_data(server_id, channel_id_str, session)
             if greetings:
                 try:
                     await channel.send(greetings)
-                    func.log.info(f"Greeting message sent as bot in channel {channel_id_str}")
+                    func.log.info(f"Greeting message sent as bot for AI {ai_name} in channel {channel_id_str}")
                 except Exception as e:
                     func.log.error(f"Error sending greeting as bot: {e}")
             if reply_system:
                 try:
                     await channel.send(reply_system)
-                    func.log.info(f"System message sent as bot in channel {channel_id_str}")
+                    func.log.info(f"System message sent as bot for AI {ai_name} in channel {channel_id_str}")
                 except Exception as e:
                     func.log.error(f"Error sending system message as bot: {e}")
+            
+            # Mark setup as complete
+            channel_data[ai_name]["setup_has_already"] = True
+            await func.update_session_data(server_id, channel_id_str, channel_data)
+            
             await interaction.followup.send(
-                f"Setup successful!\n**AI name:** {character_info['name']}\n**Character ID:** `{character_id}`\n**Channel:** {channel.mention}\n**Mode:** Bot",
+                f"Setup successful!\n**AI name:** {ai_name}\n**Character name:** {character_info['name']}\n**Character ID:** `{character_id}`\n**Channel:** {channel.mention}\n**Mode:** Bot",
                 ephemeral=True
             )
 
-    @app_commands.command(name="chat_id", description="Setup a chat ID for the AI")
+    @app_commands.command(name="chat_id", description="Setup a chat ID for a specific AI")
     @app_commands.default_permissions(administrator=True)
     @app_commands.describe(
         channel="AI Channel",
+        ai_name="Name of the AI to configure",
         chat_id="Chat ID (Leave empty to create a new Chat ID)"
     )
     async def chat_id(
         self,
         interaction: discord.Interaction,
         channel: discord.TextChannel,
+        ai_name: str,
         chat_id: str = None
     ):
         """
-        Updates the chat_id in session.json and initializes session messages.
+        Updates the chat_id in session.json and initializes session messages for a specific AI.
         """
         await interaction.response.defer(ephemeral=True)
         server_id = str(interaction.guild.id)
         channel_id_str = str(channel.id)
-        session = func.get_session_data(server_id, channel_id_str)
-        if session is None:
+        channel_data = func.get_session_data(server_id, channel_id_str)
+        
+        if channel_data is None or ai_name not in channel_data:
             await interaction.followup.send(
-                "Session data not found. Please run the setup command first.",
+                f"AI '{ai_name}' not found in this channel. Please run the setup command first.",
                 ephemeral=True
             )
             return
+        
+        session = channel_data[ai_name]
         session["setup_has_already"] = False
         session["chat_id"] = chat_id if chat_id else None
-        await func.update_session_data(server_id, channel_id_str, session)
+        
+        # Update the specific AI in channel data
+        channel_data[ai_name] = session
+        await func.update_session_data(server_id, channel_id_str, channel_data)
+        
         greetings, reply_system = await cai.initialize_session_messages(session, server_id, channel_id_str)
-        session = func.get_session_data(server_id, channel_id_str)
-        if session:
-            session["setup_has_already"] = True
-            await func.update_session_data(server_id, channel_id_str, session)
+        
+        # Mark setup as complete
+        channel_data[ai_name]["setup_has_already"] = True
+        await func.update_session_data(server_id, channel_id_str, channel_data)
+        
         if session.get("mode") == "webhook":
             WB_url = session.get("webhook_url")
             if not WB_url:
-                func.log.error(f"Webhook URL not found in session data for channel {channel_id_str}.")
+                func.log.error(f"Webhook URL not found in session data for AI {ai_name} in channel {channel_id_str}.")
                 await interaction.followup.send(
                     "Webhook URL not found in session data.",
                     ephemeral=True
@@ -297,64 +342,114 @@ Now, send your message introducing yourself in the chat, following the language 
             if greetings and WB_url:
                 try:
                     await webhook_send(WB_url, greetings, session)
-                    func.log.info("Greeting message sent via webhook for channel %s", channel_id_str)
+                    func.log.info("Greeting message sent via webhook for AI %s in channel %s", ai_name, channel_id_str)
                 except Exception as e:
-                    func.log.error("Error sending greeting via webhook for channel %s: %s", channel_id_str, e)
+                    func.log.error("Error sending greeting via webhook for AI %s in channel %s: %s", ai_name, channel_id_str, e)
             if reply_system and WB_url:
                 try:
                     await webhook_send(WB_url, reply_system, session)
-                    func.log.info("System message sent via webhook for channel %s", channel_id_str)
+                    func.log.info("System message sent via webhook for AI %s in channel %s", ai_name, channel_id_str)
                 except Exception as e:
-                    func.log.error("Error sending system message via webhook for channel %s: %s", channel_id_str, e)
+                    func.log.error("Error sending system message via webhook for AI %s in channel %s: %s", ai_name, channel_id_str, e)
         else:
             channel_obj = interaction.guild.get_channel(int(channel_id_str))
             if greetings and channel_obj:
                 try:
                     await channel_obj.send(greetings)
-                    func.log.info(f"Greeting message sent as bot in channel {channel_id_str}")
+                    func.log.info(f"Greeting message sent as bot for AI {ai_name} in channel {channel_id_str}")
                 except Exception as e:
                     func.log.error(f"Error sending greeting as bot: {e}")
             if reply_system and channel_obj:
                 try:
                     await channel_obj.send(reply_system)
-                    func.log.info(f"System message sent as bot in channel {channel_id_str}")
+                    func.log.info(f"System message sent as bot for AI {ai_name} in channel {channel_id_str}")
                 except Exception as e:
                     func.log.error(f"Error sending system message as bot: {e}")
         await interaction.followup.send(
-            f"Chat ID configuration successful! Current chat ID: `{session['chat_id']}`",
+            f"Chat ID configuration successful for AI '{ai_name}'! Current chat ID: `{session['chat_id']}`",
             ephemeral=True
         )
 
-    @app_commands.command(name="remove_ai", description="Remove the AI from a channel")
+    @app_commands.command(name="remove_ai", description="Remove a specific AI from a channel")
     @app_commands.default_permissions(administrator=True)
     @app_commands.describe(
-        channel="Channel to remove AI from"
+        channel="Channel to remove AI from",
+        ai_name="Name of the AI to remove"
     )
-    async def remove_ai(self, interaction: discord.Interaction, channel: discord.TextChannel):
+    async def remove_ai(self, interaction: discord.Interaction, channel: discord.TextChannel, ai_name: str):
         """
-        Remove the AI (bot or webhook) from the channel.
+        Remove a specific AI (bot or webhook) from the channel.
         """
         await interaction.response.defer(ephemeral=True)
         server_id = str(interaction.guild.id)
         channel_id_str = str(channel.id)
-        session = func.get_session_data(server_id, channel_id_str)
-        if not session:
-            await interaction.followup.send(f"No AI found in channel {channel.mention}.", ephemeral=True)
-            func.log.warning(f"Attempted to remove AI from channel {channel_id_str}, but no session was set.")
+        channel_data = func.get_session_data(server_id, channel_id_str)
+        
+        if not channel_data or ai_name not in channel_data:
+            await interaction.followup.send(f"AI '{ai_name}' not found in channel {channel.mention}.", ephemeral=True)
+            func.log.warning(f"Attempted to remove AI '{ai_name}' from channel {channel_id_str}, but AI was not found.")
             return
+        
+        session = channel_data[ai_name]
         if session.get("mode") == "webhook":
             webhook_url = session.get("webhook_url")
             if webhook_url:
                 try:
                     async with aiohttp.ClientSession() as aio_session:
                         webhook_obj = discord.Webhook.from_url(webhook_url, session=aio_session)
-                        await webhook_obj.delete(reason="AI removed from channel")
-                    func.log.info(f"Deleted webhook for channel {channel_id_str}")
+                        await webhook_obj.delete(reason=f"AI '{ai_name}' removed from channel")
+                    func.log.info(f"Deleted webhook for AI '{ai_name}' in channel {channel_id_str}")
                 except Exception as e:
-                    func.log.error(f"Failed to delete webhook: {e}")
-        await func.remove_session_data(server_id, channel_id_str)
-        await interaction.followup.send(f"AI successfully removed from channel {channel.mention}.", ephemeral=True)
-        func.log.info(f"AI removed from channel {channel_id_str}")
+                    func.log.error(f"Failed to delete webhook for AI '{ai_name}': {e}")
+        
+        # Remove the specific AI from channel data
+        del channel_data[ai_name]
+        
+        # If no more AIs in the channel, remove the entire channel data
+        if not channel_data:
+            await func.remove_session_data(server_id, channel_id_str)
+        else:
+            await func.update_session_data(server_id, channel_id_str, channel_data)
+        
+        await interaction.followup.send(f"AI '{ai_name}' successfully removed from channel {channel.mention}.", ephemeral=True)
+        func.log.info(f"AI '{ai_name}' removed from channel {channel_id_str}")
+
+    @app_commands.command(name="list_ais", description="List all AIs configured in a channel")
+    @app_commands.default_permissions(administrator=True)
+    @app_commands.describe(
+        channel="Channel to list AIs from"
+    )
+    async def list_ais(self, interaction: discord.Interaction, channel: discord.TextChannel):
+        """
+        List all AIs configured in the specified channel.
+        """
+        await interaction.response.defer(ephemeral=True)
+        server_id = str(interaction.guild.id)
+        channel_id_str = str(channel.id)
+        channel_data = func.get_session_data(server_id, channel_id_str)
+        
+        if not channel_data:
+            await interaction.followup.send(f"No AIs configured in channel {channel.mention}.", ephemeral=True)
+            return
+        
+        embed = discord.Embed(
+            title=f"AIs in {channel.mention}",
+            color=discord.Color.blue()
+        )
+        
+        for ai_name, ai_data in channel_data.items():
+            character_id = ai_data.get("character_id", "Unknown")
+            mode = ai_data.get("mode", "Unknown")
+            chat_id = ai_data.get("chat_id", "Not set")
+            setup_status = "✅ Set up" if ai_data.get("setup_has_already", False) else "❌ Not set up"
+            
+            embed.add_field(
+                name=f"🤖 {ai_name}",
+                value=f"**Character ID:** `{character_id}`\n**Mode:** {mode}\n**Chat ID:** `{chat_id}`\n**Status:** {setup_status}",
+                inline=False
+            )
+        
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
 async def webhook_send(url: str, message: str, session_config: dict) -> None:
     """
