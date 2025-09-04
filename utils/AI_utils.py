@@ -221,12 +221,6 @@ class discord_AI_bot:
                 
                 await func.update_session_data(server_id, channel_id_str, channel_data)
 
-                # Create new task for AI response for each AI in the channel
-                for ai_name, ai_session in channel_data.items():
-                    task_key = f"ai_response_{server_id}_{channel_id_str}_{ai_name}"
-                    self.active_tasks[task_key] = asyncio.create_task(
-                        self.AI_send_message(client, message, channel_id_str, ai_name)
-                    )
             finally:
                 # Always release the lock
                 self.channel_locks[channel_id_str].release()
