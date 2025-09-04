@@ -80,6 +80,7 @@ Now, send your message introducing yourself in the chat, following the language 
             "send_the_system_message_reply": True,
             "send_message_line_by_line": True,
             "delay_for_generation": 5,
+            "cache_count_threshold": 5,
             "remove_ai_text_from": [r'\*[^*]*\*', r'\[[^\]]*\]', '"'],
             "remove_user_text_from": [r'\*[^*]*\*', r'\[[^\]]*\]'],
             "remove_user_emoji": True,

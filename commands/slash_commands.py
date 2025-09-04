@@ -208,6 +208,7 @@ class SlashCommands(commands.Cog):
         send_the_system_message_reply="Send a reply to the system message in the channel",
         send_message_line_by_line="Send messages one line at a time",
         delay_for_generation="Delay (in seconds) before generating a response",
+        cache_count_threshold="Number of messages in cache to trigger a response (default: 5)",
         remove_ai_text_from="Comma-separated regex patterns to remove from AI messages",
         remove_user_text_from="Comma-separated regex patterns to remove from user messages",
         remove_user_emoji="Remove emojis from user messages",
@@ -228,6 +229,7 @@ class SlashCommands(commands.Cog):
         send_the_system_message_reply: bool = None,
         send_message_line_by_line: bool = None,
         delay_for_generation: int = None,
+        cache_count_threshold: int = None,
         remove_ai_text_from: str = None,
         remove_user_text_from: str = None,
         remove_user_emoji: bool = None,
@@ -278,6 +280,8 @@ class SlashCommands(commands.Cog):
             config["send_message_line_by_line"] = send_message_line_by_line
         if delay_for_generation is not None:
             config["delay_for_generation"] = delay_for_generation
+        if cache_count_threshold is not None:
+            config["cache_count_threshold"] = cache_count_threshold
 
         # ---------------- MessageFormatting Settings ------------
         # msg_format = config.setdefault("MessageFormatting", {})

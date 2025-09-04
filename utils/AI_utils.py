@@ -490,9 +490,10 @@ class discord_AI_bot:
                 cache_count = len(channel_messages)
 
                 time_since_last = time.time() - current_session.get("last_message_time", 0)
-                delay = session["config"].get("delay_for_generation", 5)
+                delay = current_session["config"].get("delay_for_generation", 5)
+                cache_threshold = current_session["config"].get("cache_count_threshold", 5)
 
-                if ((time_since_last >= delay or cache_count >= 5) and cache_count > 0):
+                if ((time_since_last >= delay or cache_count >= cache_threshold) and cache_count > 0):
                     func.log.debug(
                         "Inactivity detected for AI %s in channel %s (%d seconds, %d messages). Triggering AI response.",
                         ai_name, channel_id_str, time_since_last, cache_count
