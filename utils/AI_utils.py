@@ -152,7 +152,7 @@ class discord_AI_bot:
                 if channel_data:
                     channels_to_process.append(channel_id)
 
-            func.log.info(
+            func.log.debug(
                 f"Processing message for {len(channels_to_process)} channels in server {server_id}")
 
             # Process all channels concurrently
@@ -201,17 +201,18 @@ class discord_AI_bot:
                     message.content[:50] if message.content else "No content"
                 )
 
-                # Capture message
+                # Capture message for each AI in the channel
                 if not message.webhook_id:
-                    if message.reference:
-                        try:
-                            ref_message = await message.channel.fetch_message(message.reference.message_id)
-                            func.capture_message(message, ref_message)
-                        except Exception as e:
-                            func.log.error(
-                                "Error fetching reference message: %s", e)
-                    else:
-                        func.capture_message(message)
+                    for ai_name, _ in channel_data.items():
+                        if message.reference:
+                            try:
+                                ref_message = await message.channel.fetch_message(message.reference.message_id)
+                                func.capture_message(message, ai_name, ref_message)
+                            except Exception as e:
+                                func.log.error(
+                                    "Error fetching reference message for AI %s: %s", ai_name, e)
+                        else:
+                            func.capture_message(message, ai_name)
 
                 # Update session data for all AIs in this channel
                 current_time = time.time()
@@ -306,8 +307,8 @@ class discord_AI_bot:
                     return
 
             # Queue response generation
-            func.log.info(
-                f"Queueing AI response for AI {ai_name} in channel {channel_id_str} (character_id: {session['character_id']}, chat_id: {session['chat_id']})")
+            func.log.debug(
+                f"Queueing AI response for AI {ai_name} in channel {channel_id_str}")
 
             async def handle_response(response):
 
@@ -342,7 +343,7 @@ class discord_AI_bot:
                                         await channel_obj.send(line)
                             else:
                                 await channel_obj.send(response)
-                            func.log.info(
+                            func.log.debug(
                                 f"Sent AI response as bot for AI {ai_name} in channel {channel_id_str}")
                         else:
                             func.log.error(f"Channel object not found for {channel_id_str}")
@@ -351,14 +352,14 @@ class discord_AI_bot:
                         webhook_url = current_session.get("webhook_url")
                         if webhook_url:
                             await ai_manager.webhook_send(webhook_url, response, current_session)
-                            func.log.info(
+                            func.log.debug(
                                 f"Sent AI response via webhook for AI {ai_name} in channel {channel_id_str}")
                         else:
                             func.log.error(
                                 f"Webhook URL not found for AI {ai_name} in channel {channel_id_str}")
 
-                    # Clear the processed messages from cache
-                    await func.remove_sent_messages_from_cache(server_id, channel_id_str)
+                    # Clear the processed messages from cache for this specific AI
+                    await func.remove_sent_messages_from_cache(server_id, channel_id_str, ai_name)
 
                     # Update the session
                     current_session["awaiting_response"] = False
@@ -383,6 +384,7 @@ class discord_AI_bot:
                             server_id,
                             channel_id_str,
                             message,
+                            ai_name,
                             session["chat_id"],
                             session["character_id"],
                             handle_response
@@ -485,9 +487,9 @@ class discord_AI_bot:
 
                 # Check for inactivity or message threshold
                 cached_data = await asyncio.to_thread(func.read_json, "messages_cache.json") or {}
-                channel_messages = cached_data.get(
-                    server_id, {}).get(channel_id_str, {})
-                cache_count = len(channel_messages)
+                ai_messages = cached_data.get(
+                    server_id, {}).get(channel_id_str, {}).get(ai_name, {})
+                cache_count = len(ai_messages)
 
                 time_since_last = time.time() - current_session.get("last_message_time", 0)
                 delay = current_session["config"].get("delay_for_generation", 5)

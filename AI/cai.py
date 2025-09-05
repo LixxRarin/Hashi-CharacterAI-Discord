@@ -135,9 +135,11 @@ async def new_chat_id(create_new: bool, session: Dict[str, Any],
 
             session["chat_id"] = chat.chat_id
             session["setup_has_already"] = False
-
-            # Update session data
-            await func.update_session_data(server_id, channel_id_str, session)
+            # The session object itself is already a reference to the dictionary within func.session_cache.
+            # So, directly modifying 'session' will update the in-memory cache.
+            # We only need to queue the update for persistent storage.
+            # Ensure the session is a copy to avoid modifying the original object in the cache directly before it's written.
+            await func.session_update_queue.put((server_id, channel_id_str, session.copy()))
 
             return chat.chat_id, greeting_message_obj
     except Exception as e:
@@ -220,7 +222,10 @@ async def initialize_session_messages(session: Dict[str, Any], server_id: str,
                 "Error sending system message for channel %s: %s", channel_id, e)
 
     session["setup_has_already"] = True
-    await func.update_session_data(server_id, channel_id, session)
+    # The session object itself is already a reference to the dictionary within func.session_cache.
+    # We only need to queue the update for persistent storage.
+    # Ensure the session is a copy to avoid modifying the original object in the cache directly before it's written.
+    await func.session_update_queue.put((server_id, channel_id, session.copy()))
 
     return greeting_message, system_msg_reply
 
@@ -228,6 +233,7 @@ async def initialize_session_messages(session: Dict[str, Any], server_id: str,
 async def cai_response(messages: Dict[str, Any], message,
                        server_id: str,
                        channel_id: str,
+                       ai_name: str,
                        chat_id: Optional[str] = None,
                        character_id: Optional[str] = None,
                        session: Optional[Dict[str, Any]] = None) -> str:
@@ -262,7 +268,7 @@ async def cai_response(messages: Dict[str, Any], message,
     client = None
 
     try:
-        func.log.info(
+        func.log.debug(
             f"Initializing Character.AI client for character_id: {character_id}, chat_id: {chat_id}")
 
         async with api_semaphore:
@@ -273,7 +279,7 @@ async def cai_response(messages: Dict[str, Any], message,
                 global answer, AI_response
 
                 formatted_data = func.format_to_send(
-                    messages, message.guild.id, message.channel.id)
+                    messages, message.guild.id, message.channel.id, ai_name)
                 if not formatted_data:
                     func.log.warning("No formatted data to send to AI")
                     AI_response = "I couldn't process your message. Please try again."
@@ -345,7 +351,7 @@ async def cai_response(messages: Dict[str, Any], message,
         except Exception as e:
             func.log.error(f"Error closing client session: {str(e)}")
 
-    func.log.info(f"Final AI response: {AI_response[:100]}...")
+    func.log.debug(f"Final AI response: {AI_response[:100]}...")
     return AI_response
 
 
@@ -374,22 +380,24 @@ async def process_response_queue():
                 cached_data = await asyncio.to_thread(func.read_json, "messages_cache.json") or {}
 
                 # Get session data for this specific AI
-                channel_data = func.get_session_data(server_id, channel_id)
-                if not channel_data:
-                    func.log.error("No session data found for channel %s", channel_id)
-                    await callback("Error: No session data found.")
+                # The session data is structured as {server_id: {channels: {channel_id: {ai_name: {ai_data}}}}}
+                # We need to iterate through all AIs in the channel to find the correct one.
+                all_ais_in_channel = func.get_session_data(server_id, channel_id)
+                
+                if not all_ais_in_channel:
+                    func.log.error("No AI configurations found for channel %s in server %s", channel_id, server_id)
+                    await callback("Error: No AI configurations found for this channel.")
                     return
-                
-                # Find the AI session that matches the character_id
+
                 session = None
-                for ai_name, ai_session in channel_data.items():
-                    if ai_session.get("character_id") == character_id:
-                        session = ai_session
+                for ai_name, ai_session_data in all_ais_in_channel.items():
+                    if ai_session_data.get("character_id") == character_id:
+                        session = ai_session_data
                         break
-                
+
                 if not session:
-                    func.log.error("No session found for character_id %s in channel %s", character_id, channel_id)
-                    await callback("Error: No session found for this AI.")
+                    func.log.error("No AI session found for character_id %s in channel %s", character_id, channel_id)
+                    await callback("Error: No AI session found for this character in this channel.")
                     return
 
                 # Generate response
@@ -398,6 +406,7 @@ async def process_response_queue():
                     message,
                     server_id=server_id,
                     channel_id=channel_id,
+                    ai_name=ai_name,
                     chat_id=chat_id,
                     character_id=character_id,
                     session=session
@@ -431,7 +440,7 @@ async def process_response_queue():
             await asyncio.sleep(1)
 
 
-async def queue_response(server_id: str, channel_id: str, message,
+async def queue_response(server_id: str, channel_id: str, message, ai_name: str,
                          chat_id: str, character_id: str,
                          callback: Callable[[str], Awaitable[None]]) -> None:
     """
@@ -441,6 +450,7 @@ async def queue_response(server_id: str, channel_id: str, message,
         server_id: Server ID
         channel_id: Channel ID
         message: Discord message object
+        ai_name: The name of the AI to queue the response for
         chat_id: Character.AI chat ID
         character_id: Character.AI character ID
         callback: Async function to call with the response
@@ -449,8 +459,9 @@ async def queue_response(server_id: str, channel_id: str, message,
         "server_id": server_id,
         "channel_id": channel_id,
         "message": message,
+        "ai_name": ai_name,
         "chat_id": chat_id,
         "character_id": character_id,
         "callback": callback
     })
-    func.log.debug(f"Queued response request for channel {channel_id}")
+    func.log.debug(f"Queued response request for AI {ai_name} in channel {channel_id}")

@@ -19,7 +19,7 @@ from utils.config_updater import ConfigManager
 
 if not os.path.exists("version.txt"):
     with open("version.txt", "w") as file:
-        file.write("1.1.5\n")
+        file.write("1.1.6\n")
 
 # Initialize colorama for cross-platform colored output
 init(autoreset=True)

@@ -17,6 +17,33 @@ class AIManager(commands.Cog):
         self.bot = bot
         self.webhook_locks: Dict[str, asyncio.Lock] = {}
 
+    async def ai_name_autocomplete(self, interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+        """
+        Autocomplete function for AI names across the entire server.
+        """
+        try:
+            server_id = str(interaction.guild.id)
+            all_server_data = func.session_cache.get(server_id, {}).get("channels", {})
+            
+            if not all_server_data:
+                return []
+            
+            choices = []
+            for channel_id_str, channel_data in all_server_data.items():
+                channel_obj = interaction.guild.get_channel(int(channel_id_str))
+                channel_name = channel_obj.name if channel_obj else f"Deleted Channel ({channel_id_str})"
+
+                for ai_name in channel_data.keys():
+                    if current.lower() in ai_name.lower():
+                        # Display AI name and its channel for clarity
+                        choices.append(app_commands.Choice(name=f"{ai_name} (in #{channel_name})", value=ai_name))
+            
+            # Limit to 25 choices (Discord limit)
+            return choices[:25]
+        except Exception as e:
+            func.log.error(f"Error in ai_name_autocomplete: {e}")
+            return []
+
     def _generate_unique_ai_name(self, base_name: str, existing_names: set) -> str:
         """
         Generate a unique AI name by adding a suffix if the name already exists.
@@ -374,20 +401,20 @@ Now, send your message introducing yourself in the chat, following the language 
     @app_commands.command(name="remove_ai", description="Remove a specific AI from a channel")
     @app_commands.default_permissions(administrator=True)
     @app_commands.describe(
-        channel="Channel to remove AI from",
         ai_name="Name of the AI to remove"
     )
-    async def remove_ai(self, interaction: discord.Interaction, channel: discord.TextChannel, ai_name: str):
+    @app_commands.autocomplete(ai_name=ai_name_autocomplete)
+    async def remove_ai(self, interaction: discord.Interaction, ai_name: str):
         """
         Remove a specific AI (bot or webhook) from the channel.
         """
         await interaction.response.defer(ephemeral=True)
         server_id = str(interaction.guild.id)
-        channel_id_str = str(channel.id)
+        channel_id_str = str(interaction.channel.id) # Use interaction.channel.id directly
         channel_data = func.get_session_data(server_id, channel_id_str)
         
         if not channel_data or ai_name not in channel_data:
-            await interaction.followup.send(f"AI '{ai_name}' not found in channel {channel.mention}.", ephemeral=True)
+            await interaction.followup.send(f"AI '{ai_name}' not found in this channel.", ephemeral=True)
             func.log.warning(f"Attempted to remove AI '{ai_name}' from channel {channel_id_str}, but AI was not found.")
             return
         
@@ -412,43 +439,53 @@ Now, send your message introducing yourself in the chat, following the language 
         else:
             await func.update_session_data(server_id, channel_id_str, channel_data)
         
-        await interaction.followup.send(f"AI '{ai_name}' successfully removed from channel {channel.mention}.", ephemeral=True)
+        await interaction.followup.send(f"AI '{ai_name}' successfully removed from this channel.", ephemeral=True)
         func.log.info(f"AI '{ai_name}' removed from channel {channel_id_str}")
 
-    @app_commands.command(name="list_ais", description="List all AIs configured in a channel")
+    @app_commands.command(name="list_ais", description="List all AIs configured in this server")
     @app_commands.default_permissions(administrator=True)
-    @app_commands.describe(
-        channel="Channel to list AIs from"
-    )
-    async def list_ais(self, interaction: discord.Interaction, channel: discord.TextChannel):
+    async def list_ais(self, interaction: discord.Interaction):
         """
-        List all AIs configured in the specified channel.
+        List all AIs configured in the current server, across all channels.
         """
         await interaction.response.defer(ephemeral=True)
         server_id = str(interaction.guild.id)
-        channel_id_str = str(channel.id)
-        channel_data = func.get_session_data(server_id, channel_id_str)
         
-        if not channel_data:
-            await interaction.followup.send(f"No AIs configured in channel {channel.mention}.", ephemeral=True)
+        all_server_data = func.session_cache.get(server_id, {}).get("channels", {})
+        
+        if not all_server_data:
+            await interaction.followup.send("No AIs configured in this server.", ephemeral=True)
             return
         
         embed = discord.Embed(
-            title=f"AIs in {channel.mention}",
+            title=f"AIs in {interaction.guild.name}",
             color=discord.Color.blue()
         )
         
-        for ai_name, ai_data in channel_data.items():
-            character_id = ai_data.get("character_id", "Unknown")
-            mode = ai_data.get("mode", "Unknown")
-            chat_id = ai_data.get("chat_id", "Not set")
-            setup_status = "✅ Set up" if ai_data.get("setup_has_already", False) else "❌ Not set up"
-            
-            embed.add_field(
-                name=f"🤖 {ai_name}",
-                value=f"**Character ID:** `{character_id}`\n**Mode:** {mode}\n**Chat ID:** `{chat_id}`\n**Status:** {setup_status}",
-                inline=False
-            )
+        for channel_id_str, channel_data in all_server_data.items():
+            channel_obj = interaction.guild.get_channel(int(channel_id_str))
+            channel_mention = channel_obj.mention if channel_obj else f"Deleted Channel ({channel_id_str})"
+
+            for ai_name, ai_data in channel_data.items():
+                character_id = ai_data.get("character_id", "Unknown")
+                mode = ai_data.get("mode", "Unknown")
+                chat_id = ai_data.get("chat_id", "Not set")
+                setup_status = "✅ Set up" if ai_data.get("setup_has_already", False) else "❌ Not set up"
+                
+                # Fetch character info to get avatar URL
+                character_info = await cai.get_bot_info(character_id=character_id)
+                avatar_url = character_info.get("avatar_url") if character_info else None
+
+                embed.add_field(
+                    name=f"🤖 {ai_name}",
+                    value=f"**Channel:** {channel_mention}\n**Character ID:** `{character_id}`\n**Mode:** {mode}\n**Chat ID:** `{chat_id}`\n**Status:** {setup_status}",
+                    inline=False
+                )
+
+                # embed.set_footer(text="Character.AI bots are available on Discord thanks to Hashi!")
+                # embed.add_field(
+                # name="🔗 Learn More about Hashi",
+                # value="[GitHub Repository](https://github.com/LixxRarin/Hashi-CharacterAI-Discord)", inline=False)
         
         await interaction.followup.send(embed=embed, ephemeral=True)
 

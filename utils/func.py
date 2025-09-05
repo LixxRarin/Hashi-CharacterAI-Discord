@@ -199,13 +199,14 @@ def is_channel_active(server_id: str, channel_id: str) -> bool:
     return channel_id in session_cache.get(server_id, {}).get("channels", {})
 
 
-def capture_message(message_info, reply_message=None) -> None:
+def capture_message(message_info, ai_name: str, reply_message=None) -> None:
     """
     Captures a message from a specified channel and stores it in the messages_cache.json file.
     Prevents duplicate messages from being added to the cache.
 
     Args:
         message_info: Discord message object
+        ai_name: The name of the AI this message is for
         reply_message: Optional reply message object
     """
     # Skip capturing if the message was sent by a webhook.
@@ -225,21 +226,20 @@ def capture_message(message_info, reply_message=None) -> None:
     if not is_channel_active(server_id, channel_id):
         return
 
-    # Ensure server and channel keys exist
+    # Ensure server, channel, and AI keys exist
     if server_id not in dados:
         dados[server_id] = {}
     if channel_id not in dados[server_id]:
         dados[server_id][channel_id] = {}
+    if ai_name not in dados[server_id][channel_id]:
+        dados[server_id][channel_id][ai_name] = {}
 
+    # Get session data for the specific AI to retrieve its configuration
     channel_data = get_session_data(server_id, channel_id)
-    
-    if not channel_data:
+    if not channel_data or ai_name not in channel_data:
         return
     
-    # Use the first AI's configuration for message formatting
-    # (all AIs in a channel should have the same formatting settings)
-    first_ai_name = next(iter(channel_data.keys()))
-    session = channel_data[first_ai_name]
+    session = channel_data[ai_name]
 
     # Retrieve format templates from configuration
     template_syntax = session["config"].get("user_format_syntax", "{message}")
@@ -289,60 +289,61 @@ def capture_message(message_info, reply_message=None) -> None:
 
     # Group messages if the last one was from the same user
     try:
-        channel_data = dados[server_id][channel_id]
+        ai_cache_data = dados[server_id][channel_id][ai_name]
 
         if reply_message is None and msg_text not in [None, ""]:
             formatted_message = template_syntax.format(**syntax)
 
             # Check if this exact message already exists in the cache
             message_already_exists = False
-            for key, existing_message in channel_data.items():
+            for key, existing_message in ai_cache_data.items():
                 if existing_message == formatted_message:
                     message_already_exists = True
                     log.debug(
-                        "Skipping duplicate message for channel %s", channel_id)
+                        "Skipping duplicate message for AI %s in channel %s", ai_name, channel_id)
                     break
 
             if not message_already_exists:
-                last_key = list(channel_data.keys()
-                                )[-1] if channel_data else None
-                last_message = channel_data.get(last_key, "")
+                last_key = list(ai_cache_data.keys()
+                                )[-1] if ai_cache_data else None
+                last_message = ai_cache_data.get(last_key, "")
 
                 # If the last message is from the same user (checked via message ending), group the message.
                 if last_key and "Message" in last_key and last_message.endswith(syntax["name"]):
-                    dados[server_id][channel_id][last_key] += f"\n{formatted_message}"
+                    dados[server_id][channel_id][ai_name][last_key] += f"\n{formatted_message}"
                 else:
-                    new_key = f"Message{len(channel_data) + 1}"
-                    dados[server_id][channel_id][new_key] = formatted_message
-                log.debug("Captured new message for channel %s: %s",
-                          channel_id, formatted_message)
+                    new_key = f"Message{len(ai_cache_data) + 1}"
+                    dados[server_id][channel_id][ai_name][new_key] = formatted_message
+                log.debug("Captured new message for AI %s in channel %s: %s",
+                          ai_name, channel_id, formatted_message)
 
         elif reply_message is not None:
             formatted_reply = reply_template_syntax.format(**syntax)
             # Check if this reply already exists
-            if "Reply" not in channel_data or channel_data["Reply"] != formatted_reply:
-                dados[server_id][channel_id]["Reply"] = formatted_reply
-                log.debug("Captured reply message for channel %s: %s",
-                          channel_id, formatted_reply)
+            if "Reply" not in ai_cache_data or ai_cache_data["Reply"] != formatted_reply:
+                dados[server_id][channel_id][ai_name]["Reply"] = formatted_reply
+                log.debug("Captured reply message for AI %s in channel %s: %s",
+                          ai_name, channel_id, formatted_reply)
 
     except Exception as e:
         log.error(
-            "Error while saving message to cache for channel %s: %s", channel_id, e)
+            "Error while saving message to cache for AI %s in channel %s: %s", ai_name, channel_id, e)
 
     write_json("messages_cache.json", dados)
 
 
-def format_to_send(cache_data: CacheData, server_id: str, channel_id: str) -> str:
+def format_to_send(cache_data: CacheData, server_id: str, channel_id: str, ai_name: str) -> str:
     """
-    Aggregates cached messages from a specific channel in a specific server into a single string.
+    Aggregates cached messages from a specific AI in a specific channel and server into a single string.
 
     Args:
         cache_data: Dictionary containing cached data
         server_id: Server ID
         channel_id: Channel ID
+        ai_name: The name of the AI to format messages for
 
     Returns:
-        str: Combined messages from the specified channel
+        str: Combined messages from the specified AI
     """
     formatted_messages = []
     try:
@@ -356,18 +357,24 @@ def format_to_send(cache_data: CacheData, server_id: str, channel_id: str) -> st
             log.error(
                 "No cache data found for channel_id: %s in server %s", channel_id, server_id)
             return ""
+        
+        ai_cache_data = channel_data.get(ai_name)
+        if not ai_cache_data:
+            log.error(
+                "No cache data found for AI: %s in channel %s in server %s", ai_name, channel_id, server_id)
+            return ""
 
-        for key, text in channel_data.items():
+        for key, text in ai_cache_data.items():
             if isinstance(text, str):
                 formatted_messages.append(text)
 
     except Exception as e:
-        log.error("Error formatting cached messages: %s", e)
+        log.error("Error formatting cached messages for AI %s: %s", ai_name, e)
         return ""
 
     combined_message = "\n".join(formatted_messages)
-    log.debug("Formatted message to send for server %s, channel %s: %s",
-              server_id, channel_id, combined_message[:100] + "..." if len(combined_message) > 100 else combined_message)
+    log.debug("Formatted message to send for AI %s in server %s, channel %s: %s",
+              ai_name, server_id, channel_id, combined_message[:100] + "..." if len(combined_message) > 100 else combined_message)
     return combined_message
 
 
@@ -439,7 +446,11 @@ async def process_session_updates() -> None:
             if "channels" not in session_data[server_id]:
                 session_data[server_id]["channels"] = {}
 
-            session_data[server_id]["channels"][channel_id] = new_data
+            if new_data is None: # If new_data is None, it means we are removing the channel
+                if channel_id in session_data[server_id]["channels"]:
+                    del session_data[server_id]["channels"][channel_id]
+            else:
+                session_data[server_id]["channels"][channel_id] = new_data
 
             await asyncio.to_thread(write_json, "session.json", session_data)
 
@@ -448,7 +459,12 @@ async def process_session_updates() -> None:
                 session_cache[server_id] = {"channels": {}}
             if "channels" not in session_cache[server_id]:
                 session_cache[server_id]["channels"] = {}
-            session_cache[server_id]["channels"][channel_id] = new_data
+            
+            if new_data is None: # If new_data is None, it means we are removing the channel
+                if channel_id in session_cache[server_id]["channels"]:
+                    del session_cache[server_id]["channels"][channel_id]
+            else:
+                session_cache[server_id]["channels"][channel_id] = new_data
 
             session_update_queue.task_done()
             log.debug(
@@ -495,20 +511,48 @@ def get_session_data(server_id: str, channel_id: str) -> Optional[Dict[str, Any]
     return session_cache.get(server_id, {}).get("channels", {}).get(channel_id)
 
 
-async def clear_message_cache(server_id: str, channel_id: str) -> None:
+def get_ai_session_data_from_all_channels(server_id: str, ai_name: str) -> Optional[tuple[str, Dict[str, Any]]]:
     """
-    Limpa o cache de mensagens para um canal específico.
+    Searches for a specific AI's session data across all channels in a given server.
+
+    Args:
+        server_id: The ID of the server.
+        ai_name: The name of the AI to find.
+
+    Returns:
+        Optional[tuple[str, Dict[str, Any]]]: A tuple containing the channel ID and the session data for the AI if found, otherwise None.
+    """
+    server_data = session_cache.get(server_id, {})
+    channels_data = server_data.get("channels", {})
+
+    for channel_id, channel_ais in channels_data.items():
+        if ai_name in channel_ais:
+            return channel_id, channel_ais[ai_name]
+    return None
+
+
+async def clear_message_cache(server_id: str, channel_id: str, ai_name: Optional[str] = None) -> None:
+    """
+    Limpa o cache de mensagens para um canal específico ou para uma IA específica dentro de um canal.
 
     Args:
         server_id: ID do servidor
         channel_id: ID do canal
+        ai_name: Opcional. O nome da IA para limpar o cache. Se None, limpa o cache de todas as IAs no canal.
     """
     cache_data = await asyncio.to_thread(read_json, "messages_cache.json")
     if cache_data and server_id in cache_data and channel_id in cache_data[server_id]:
-        del cache_data[server_id][channel_id]
+        if ai_name:
+            if ai_name in cache_data[server_id][channel_id]:
+                del cache_data[server_id][channel_id][ai_name]
+                log.info(
+                    f"Cleared message cache for AI '{ai_name}' in server {server_id}, channel {channel_id}")
+        else:
+            # Clear all AIs in the channel
+            del cache_data[server_id][channel_id]
+            log.info(
+                f"Cleared message cache for all AIs in server {server_id}, channel {channel_id}")
         await asyncio.to_thread(write_json, "messages_cache.json", cache_data)
-        log.info(
-            f"Cleared message cache for server {server_id}, channel {channel_id}")
 
 
 async def remove_session_data(server_id: str, channel_id: str) -> None:
@@ -521,29 +565,53 @@ async def remove_session_data(server_id: str, channel_id: str) -> None:
     """
     global session_cache
     if server_id in session_cache and channel_id in session_cache[server_id].get("channels", {}):
+        # Remove from in-memory cache
         del session_cache[server_id]["channels"][channel_id]
-        await update_session_data(server_id, channel_id, None)
-        log.info(
-            f"Removed session data for server {server_id}, channel {channel_id}")
+        log.info(f"Removed session data for server {server_id}, channel {channel_id} from cache.")
 
-    # Limpa o cache de mensagens
+        # Update persistent storage by queuing a None value for the channel
+        await session_update_queue.put((server_id, channel_id, None))
+
+    # Limpa o cache de mensagens para todas as IAs no canal
     await clear_message_cache(server_id, channel_id)
 
 
-async def remove_sent_messages_from_cache(server_id: str, channel_id: str) -> None:
+async def remove_sent_messages_from_cache(server_id: str, channel_id: str, ai_name: str) -> None:
     """
-    Remove sent messages from cache for a specific channel.
+    Remove sent messages from cache for a specific AI in a specific channel.
     Only removes messages that have been processed by the AI.
 
     Args:
         server_id: Server ID
         channel_id: Channel ID
+        ai_name: The name of the AI whose messages to clear
     """
     cache_data = await asyncio.to_thread(read_json, "messages_cache.json")
-    if cache_data and server_id in cache_data and channel_id in cache_data[server_id]:
-        # Instead of keeping only the last message, we'll clear the cache completely
-        # This is because the AI has already processed all messages in the cache
-        cache_data[server_id][channel_id] = {}
+    if cache_data and server_id in cache_data and channel_id in cache_data[server_id] and ai_name in cache_data[server_id][channel_id]:
+        cache_data[server_id][channel_id][ai_name] = {}
         await asyncio.to_thread(write_json, "messages_cache.json", cache_data)
-        log.info(
-            f"Removed processed messages from cache for server {server_id}, channel {channel_id}")
+        log.debug(
+            f"Removed processed messages from cache for AI '{ai_name}' in server {server_id}, channel {channel_id}")
+
+
+async def remove_session_data(server_id: str, channel_id: str) -> None:
+    """
+    Remove os dados da sessão para um canal específico.
+
+    Args:
+        server_id: ID do servidor
+        channel_id: ID do canal
+    """
+    global session_cache
+    if server_id in session_cache and channel_id in session_cache[server_id].get("channels", {}):
+        # Remove from in-memory cache
+        del session_cache[server_id]["channels"][channel_id]
+        log.info(f"Removed session data for server {server_id}, channel {channel_id} from cache.")
+
+        # Update persistent storage by queuing a None value for the channel
+        await session_update_queue.put((server_id, channel_id, None))
+
+    # Limpa o cache de mensagens
+    await clear_message_cache(server_id, channel_id)
+
+
