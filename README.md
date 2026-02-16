@@ -2,10 +2,12 @@
 ### Character.AI to Discord Servers!
 
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)  [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-green.svg)](https://www.python.org/downloads/)
- 
+
+**WARNING: Hashi Character.AI Discord has been discontinued :( Please try the new [Hashi AI Discord](https://github.com/LixxRarin/Hashi-AI-Discord), packed with new features and updates!**
+
 Project Hashi allows Character.AI personas to interact with users in your Discord server. Perfect for bringing AI personalities to your community!
 
-**Demo Server**: [Join Discord](https://discord.gg/pPSk2g8YX2) | **Report Issues**: [GitHub Issues](https://github.com/LixxRarin/Hashi-CharacterAI-Discord/issues)
+~~**Demo Server**: [Join Discord](https://discord.gg/pPSk2g8YX2)~~ | **Report Issues**: [GitHub Issues](https://github.com/LixxRarin/Hashi-CharacterAI-Discord/issues)
 
 <a href="https://files.catbox.moe/uwwd6m.png"><img src="https://files.catbox.moe/uwwd6m.png" alt="..." border="0"></a>
 
@@ -37,6 +39,7 @@ Project Hashi allows Character.AI personas to interact with users in your Discor
 
 ## 🚧 Roadmap
 ### Core Improvements
+
 - [x] Emoji filtering system
 - [x] Multi-bot instance support
 - [ ] DM interaction support
